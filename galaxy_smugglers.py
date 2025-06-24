@@ -50,6 +50,12 @@ class Player:
     def subtract_credits(self, amount: int):
         self.credits = max(0, self.credits - amount)
         self.credit_history.append(self.credits)
+
+    def add_skill(self, amount: int):
+        self.skill_level = max(1, self.skill_level + amount)
+
+    def subtract_skill(self, amount: int):
+        self.skill_level = max(1, self.skill_level - amount)
     
     def record_decision(self, decision: str, mission_round: int):
         self.decision_history.append({
@@ -78,16 +84,36 @@ class GameState:
         self.mission_results = []
         
     def generate_mission(self) -> Mission:
-        missions = [
-            ("Transporte de Especiarias", random.randint(8, 12), random.randint(30, 50), random.randint(5, 10)),
-            ("Contrabando de Armas", random.randint(10, 15), random.randint(40, 70), random.randint(8, 15)),
-            ("Medicamentos Ilegais", random.randint(12, 18), random.randint(50, 80), random.randint(10, 18)),
-            ("Dados Corporativos", random.randint(6, 10), random.randint(20, 40), random.randint(3, 8)),
+        # Verifica se pelo menos um jogador tem créditos suficientes para o custo de combustível
+        # e se a soma das habilidades pode alcançar o nível de risco da missão
+        if self.players:
+            possible = False
+            skill_possible = False
+
+            attempts = 0
+            while (not possible or not skill_possible) and attempts < 10:
+                missions = self.__generate_mission_pool()
+                shuffled_missions = random.sample(missions, len(missions))
+
+                for name, risk, reward, fuel in shuffled_missions:
+                    possible_players = filter(lambda player: player.credits >= fuel, self.players)
+                    possible = len(list(possible_players)) > 0
+                    skill_possible = sum(player.skill_level for player in possible_players) + 6 >= risk
+                
+            if not possible or not skill_possible:
+                # Se ninguém pode pagar ou não é possível vencer, retorna a missão mesmo assim (o jogo não pode travar)
+                pass
+
+        return Mission(name, risk, reward, fuel)
+    
+    def __generate_mission_pool(self) -> List[Mission]:
+        return [
+            ("Transporte de Especiarias", random.randint(8, 12), random.randint(30, 50), random.randint(6, 10)),
+            ("Contrabando de Armas", random.randint(10, 15), random.randint(40, 70), random.randint(8, 14)),
+            ("Medicamentos Ilegais", random.randint(12, 18), random.randint(50, 80), random.randint(10, 16)),
+            ("Dados Corporativos", random.randint(6, 10), random.randint(20, 40), random.randint(4, 8)),
             ("Refugiados Políticos", random.randint(14, 20), random.randint(60, 100), random.randint(12, 20))
         ]
-        
-        name, risk, reward, fuel = random.choice(missions)
-        return Mission(name, risk, reward, fuel)
     
     def execute_mission(self) -> Dict:
         if not self.selected_players or not self.current_mission:
@@ -119,6 +145,7 @@ class GameState:
             reward_per_player = self.current_mission.reward // len(self.selected_players)
             for player in self.selected_players:
                 player.add_credits(reward_per_player)
+                player.add_skill(1)
                 player.missions_completed += 1
             result["reward_per_player"] = reward_per_player
         else:
@@ -196,7 +223,7 @@ class GameUI:
         self.selected_player_indices = []
         self.setup_players_count = 2
         self.setup_player_names = ["Jogador 1", "Jogador 2"]
-        self.setup_player_skills = [3, 3]
+        self.setup_player_skills = [5, 5]
         self.setup_player_credits = [50, 50]
         self.setup_victory_condition = "credits"
         self.setup_victory_target = 100

@@ -223,7 +223,7 @@ class GameUI:
         self.selected_player_indices = []
         self.setup_players_count = 2
         self.setup_player_names = ["Jogador 1", "Jogador 2"]
-        self.setup_player_skills = [3, 3]
+        self.setup_player_skills = [5, 5]
         self.setup_player_credits = [50, 50]
         self.setup_victory_condition = "credits"
         self.setup_victory_target = 100

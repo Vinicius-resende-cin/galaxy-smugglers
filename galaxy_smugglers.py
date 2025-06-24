@@ -50,6 +50,12 @@ class Player:
     def subtract_credits(self, amount: int):
         self.credits = max(0, self.credits - amount)
         self.credit_history.append(self.credits)
+
+    def add_skill(self, amount: int):
+        self.skill_level = max(1, self.skill_level + amount)
+
+    def subtract_skill(self, amount: int):
+        self.skill_level = max(1, self.skill_level - amount)
     
     def record_decision(self, decision: str, mission_round: int):
         self.decision_history.append({
@@ -139,6 +145,7 @@ class GameState:
             reward_per_player = self.current_mission.reward // len(self.selected_players)
             for player in self.selected_players:
                 player.add_credits(reward_per_player)
+                player.add_skill(1)
                 player.missions_completed += 1
             result["reward_per_player"] = reward_per_player
         else:

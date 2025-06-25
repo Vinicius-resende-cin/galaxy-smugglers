@@ -384,10 +384,15 @@ class GameUI:
             
             # Previsão de resultado
             total_skill = sum(self.game_state.players[i].skill_level for i in self.selected_player_indices)
-            preview_text = font_small.render(f"Habilidade Total: {total_skill}", True, WHITE)
-            screen.blit(preview_text, (500, y_pos + 20))
-            
-            chance_text = font_small.render(f"Chance de Sucesso: ~{min(100, max(0, (total_skill + 3.5 - self.game_state.current_mission.risk_level) * 16.67)):.0f}%", True, WHITE)
+            risk = self.game_state.current_mission.risk_level
+            # Quantos resultados do dado (1 a 6) resultam em sucesso?
+            successes = 0
+            for dice in range(1, 7):
+                if total_skill + dice >= risk:
+                    successes += 1
+            chance_real = 100 * successes // 6  # Inteiro, arredondado para baixo
+
+            chance_text = font_small.render(f"Chance de Sucesso: {chance_real}%", True, WHITE)
             screen.blit(chance_text, (500, y_pos + 45))
         
         # Botões de ação

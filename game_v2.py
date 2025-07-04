@@ -28,6 +28,22 @@ FONT_SMALL = pygame.font.Font(None, 24)
 # Configurações do Jogo
 WIN_CONDITION_CREDITS = 200
 DICE_SIDES = 6
+RISK_ADJUSTMENT_FACTOR = 2  # Fator que ajusta o risco da missão coletiva conforme o número de jogadores
+
+# --- Função para Entrar com os Jogadores ---
+def get_player_input():
+    """Solicita ao usuário o número de jogadores e cria jogadores com atributos aleatórios."""
+    num_players = int(input("Quantos jogadores irão participar? "))
+    players = []
+
+    for i in range(num_players):
+        name = f"Jogador {i + 1}"  # Nome gerado automaticamente
+        credits = random.randint(20, 100)  # Créditos aleatórios entre 20 e 100
+        skill_level = random.randint(1, 10)  # Habilidade aleatória entre 1 e 10
+        players.append(Player(name, credits, skill_level))
+
+    return players
+
 
 # --- Classes do Jogo ---
 
@@ -53,7 +69,7 @@ class Mission:
     def __init__(self, name, type, risk, reward, cost):
         self.name = name
         self.type = type
-        self.base_risk = risk # base_risk is now just the initial risk for the mission type
+        self.base_risk = risk  # base_risk is now just the initial risk for the mission type
         self.risk = risk
         self.reward = reward
         self.cost = cost
@@ -86,11 +102,7 @@ class Button:
 class GameManager:
     """Gerencia todo o estado e fluxo do jogo."""
     def __init__(self):
-        self.players = [
-            Player("Capitã Eva", 50, 3),
-            Player("Kael, o Piloto", 30, 5),
-            Player("Zorg, o Mercador", 70, 1),
-        ]
+        self.players = get_player_input()  # Use a função de entrada para configurar os jogadores
         self.game_state = "DECISION"  # DECISION, COST, RESOLUTION, END_GAME
         self.current_round = 0
         self.missions = {}
@@ -98,8 +110,8 @@ class GameManager:
         
         # Controle de turnos e decisões
         self.active_player_index = 0
-        self.player_decisions = {} # Guarda a decisão principal ('SOLO', 'COLETIVA', 'SKIP')
-        self.cost_decision_pending = None # Guarda o jogador que precisa decidir o custo
+        self.player_decisions = {}  # Guarda a decisão principal ('SOLO', 'COLETIVA', 'SKIP')
+        self.cost_decision_pending = None  # Guarda o jogador que precisa decidir o custo
         
         self.winner = None
         self._setup_buttons()
@@ -188,14 +200,15 @@ class GameManager:
         participants = [p for p, d in self.player_decisions.items() if d['type'] == 'COLETIVA']
         
         if participants:
+            # Ajuste do risco conforme o número de participantes
+            coop_mission.risk = coop_mission.base_risk + (len(participants) * RISK_ADJUSTMENT_FACTOR) 
+            
             total_skill = sum(p.skill_level for p in participants)
             freeriders = sum(1 for p in participants if not self.player_decisions[p]['paid'])
             
             # Penalidade de risco por caroneiro
-            # The risk calculation here still adds to the base_risk, but base_risk itself is now randomized per round.
             coop_mission.risk = coop_mission.base_risk + (freeriders * 3) 
             
-            # Deduzir custos
             for p in participants:
                 if self.player_decisions[p]['paid']:
                     p.credits -= coop_mission.cost
@@ -237,6 +250,9 @@ class GameManager:
             else:
                 self.log_event(f"FRACASSO! {p.name} não ganha nada. ({log_msg})")
 
+        # Eliminar jogadores com créditos <= 0
+        self.players = [p for p in self.players if p.credits > 0]
+
         # Logar dados da rodada para o relatório final
         for p in self.players:
             decision = self.player_decisions.get(p, {'type': 'SKIP', 'paid': False})
@@ -245,7 +261,7 @@ class GameManager:
         if self.check_win_condition():
             self.game_state = "END_GAME"
         else:
-            pygame.time.set_timer(pygame.USEREVENT + 1, 3000) # Pausa antes da próxima rodada
+            pygame.time.set_timer(pygame.USEREVENT + 1, 3000)
 
     def check_win_condition(self):
         for p in self.players:
@@ -254,11 +270,10 @@ class GameManager:
                 self.log_event(f"--- FIM DE JOGO! {p.name} alcançou {WIN_CONDITION_CREDITS} créditos! ---")
                 return True
         return False
-    
+
     def log_event(self, message):
-        # Simply print the message to the console
         print(message)
-    
+
     def generate_report(self):
         report = [f"Relatório Final da Partida - {self.winner.name} Venceu!"]
         report.append("="*40)
@@ -279,7 +294,7 @@ class GameManager:
                         line += f"{credit_track[p.name]:<20}"
                         found = True
                         break
-                if not found: # Caso o jogador não tenha participado e não tenha log
+                if not found:
                     line += f"{credit_track[p.name]:<20}"
             report.append(line)
 
@@ -320,10 +335,9 @@ class GameManager:
                     self.buttons['pay_cost'].draw(screen)
                     self.buttons['freeride'].draw(screen)
         
-        else: # Tela de Fim de Jogo
+        else:  # Tela de Fim de Jogo
             report_lines = self.generate_report()
             for i, line in enumerate(report_lines):
-                # Usar fonte monoespaçada para melhor alinhamento
                 font = pygame.font.SysFont('consolas', 22)
                 draw_text(screen, line, font, WHITE, 50, 50 + i * 30)
 
@@ -373,7 +387,7 @@ def main():
             # Timer para avançar para a próxima rodada após a resolução
             if event.type == pygame.USEREVENT + 1:
                 game_manager.new_round()
-                pygame.time.set_timer(pygame.USEREVENT + 1, 0) # Desativa o timer
+                pygame.time.set_timer(pygame.USEREVENT + 1, 0)  # Desativa o timer
 
             game_manager.handle_input(event, mouse_pos)
 

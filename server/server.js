@@ -42,6 +42,38 @@ function rollDice() {
   return Math.floor(Math.random() * 6) + 1;
 }
 
+// Função para embaralhar o array de jogadores (Fisher-Yates Shuffle)
+function shuffleArray(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]]; // Troca os elementos
+  }
+}
+
+// Função para dividir jogadores em grupos equilibrados de 2 ou 3
+function divideIntoGroups(players) {
+  const groups = [];
+  
+  // Embaralha a lista de jogadores antes de formar os grupos
+  shuffleArray(players);
+
+  while (players.length > 0) {
+    if (players.length % 3 === 0) {
+      groups.push(players.splice(0, 3)); // Adiciona grupo de 3
+    } else {
+      groups.push(players.splice(0, 2)); // Adiciona grupo de 2
+    }
+  }
+
+  // Log dos grupos formados
+  console.log('Grupos formados para a missão coletiva:');
+  groups.forEach((group, index) => {
+    console.log(`Grupo ${index + 1}: ${group.map(player => player.name).join(', ')}`);
+  });
+
+  return groups;
+}
+
 // Função para resolver missões individuais
 function resolveIndividualMission(player, mission) {
   const roll = rollDice();
@@ -57,18 +89,28 @@ function resolveIndividualMission(player, mission) {
 }
 
 // Função para resolver missões coletivas
-function resolveCollectiveMission(playersInvolved, mission) {
-  const totalSkill = playersInvolved.reduce((total, player) => total + player.skillLevel, 0);
-  const roll = rollDice();
-  const success = (totalSkill + roll >= mission.difficulty);
+function resolveCollectiveMission(groups, mission) {
+  const groupResults = [];
+  
+  groups.forEach(group => {
+    const totalSkill = group.reduce((total, player) => total + player.skillLevel, 0);
+    const roll = rollDice();
+    const success = (totalSkill + roll >= mission.difficulty);
 
-  if (success) {
-    playersInvolved.forEach(player => player.credits += mission.reward);
-  } else {
-    playersInvolved.forEach(player => player.credits -= mission.failureCost);
-  }
+    if (success) {
+      group.forEach(player => player.credits += mission.reward);
+    } else {
+      group.forEach(player => player.credits -= mission.failureCost);
+    }
 
-  return { success, credits: playersInvolved.map(p => p.credits) };
+    groupResults.push({
+      group,
+      success,
+      credits: group.map(player => player.credits)
+    });
+  });
+
+  return groupResults;
 }
 
 // Enviar uma mensagem para um único jogador
@@ -149,19 +191,24 @@ wss.on('connection', (ws) => {
 
         // Resolução das missões coletivas
         const collectiveMission = missions.find(m => m.type === 'collective');
-        collectiveMission.playersParticipating = players.filter(p => {
+        const playersForCollective = players.filter(p => {
           return playersChoices.find(c => c.player === p.name && c.choice === 'collective');
         });
 
-        if (collectiveMission.playersParticipating.length > 0) {
-          const result = resolveCollectiveMission(collectiveMission.playersParticipating, collectiveMission);
-          collectiveMission.playersParticipating.forEach(player => {
-            sendToPlayer(player, {
-              type: 'roundEnd',
-              playerName: player.name,
-              success: result.success ? 'Venceu' : 'Perdeu',
-              credits: player.credits,
-              missions: missions // Envia as novas missões
+        if (playersForCollective.length > 0) {
+          // Divide os jogadores em grupos equilibrados e aleatórios
+          const groups = divideIntoGroups(playersForCollective);
+          const groupResults = resolveCollectiveMission(groups, collectiveMission);
+
+          groupResults.forEach(groupResult => {
+            groupResult.group.forEach(player => {
+              sendToPlayer(player, {
+                type: 'roundEnd',
+                playerName: player.name,
+                success: groupResult.success ? 'Venceu' : 'Perdeu',
+                credits: player.credits,
+                missions: missions // Envia as novas missões
+              });
             });
           });
         }

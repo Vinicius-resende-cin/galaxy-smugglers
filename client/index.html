@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Galaxy Smugglers</title>
+    <script src="client.js"></script>
+</head>
+<body>
+    <h1>Galaxy Smugglers</h1>
+
+    <!-- Informações do Jogador -->
+    <div id="playerInfo">
+        <h2>Informações do Jogador</h2>
+        <p id="playerName">Nome: Aguardando...</p>
+        <p id="playerSkill">Habilidade: Aguardando...</p>
+    </div>
+
+    <!-- Informações das Missões -->
+    <div id="currentMissions">
+        <h2>Missões Atuais</h2>
+
+        <!-- Missão Individual -->
+        <div id="individualMission">
+            <h3>Missão Individual</h3>
+            <p id="missionIndividualType">Tipo: Aguardando...</p>
+            <p id="missionIndividualDifficulty">Dificuldade: Aguardando...</p>
+            <p id="missionIndividualReward">Recompensa: Aguardando...</p>
+            <p id="missionIndividualFailureCost">Custo de fracasso: Aguardando...</p>
+        </div>
+
+        <!-- Missão Coletiva -->
+        <div id="collectiveMission">
+            <h3>Missão Coletiva</h3>
+            <p id="missionCollectiveType">Tipo: Aguardando...</p>
+            <p id="missionCollectiveDifficulty">Dificuldade: Aguardando...</p>
+            <p id="missionCollectiveReward">Recompensa: Aguardando...</p>
+            <p id="missionCollectiveFailureCost">Custo de fracasso: Aguardando...</p>
+        </div>
+    </div>
+
+    <!-- Botões para escolher missões -->
+    <div>
+        <button onclick="chooseMission('individual')">Escolher Missão Individual</button>
+        <button onclick="chooseMission('collective')">Escolher Missão Coletiva</button>
+    </div>
+
+    <!-- Resultado da Rodada -->
+    <div id="roundResult">
+        <h2>Resultado da Rodada</h2>
+        <p id="roundOutcome">Resultado: Aguardando...</p>
+        <p id="roundCredits">Créditos após a rodada: Aguardando...</p>
+    </div>
+
+</body>
+</html>

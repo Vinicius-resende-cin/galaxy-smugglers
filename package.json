@@ -1,0 +1,16 @@
+{
+  "name": "galaxy-smugglers",
+  "version": "1.0.0",
+  "description": "Um protótipo de jogo de estratégia e cooperação desenvolvido em Pygame, onde jogadores são contrabandistas espaciais buscando acumular créditos através de missões perigosas.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.1.0",
+    "ws": "^8.18.3"
+  }
+}

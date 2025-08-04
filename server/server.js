@@ -1,7 +1,8 @@
-// server/server.js
+// server.js
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
+const { INITIAL_CREDITS, FIXED_SKILL_LEVELS, missionsData } = require('./gameConfig');
 
 const app = express();
 const server = http.createServer(app);
@@ -14,23 +15,37 @@ let currentRound = 1; // Controla o número da rodada
 let missions = []; // Armazenar missões
 let playersChoices = []; // Armazenar as escolhas dos jogadores para as missões
 
-// Função para criar uma missão
+// Função para criar jogadores com base nas variáveis fixas
+function createPlayer(name) {
+  // Atribui habilidade fixa de 3 ou 5 de maneira aleatória
+  const skillLevel = FIXED_SKILL_LEVELS[Math.floor(Math.random() * FIXED_SKILL_LEVELS.length)];
+  
+  return {
+    name,
+    credits: INITIAL_CREDITS, // Créditos iniciais
+    skillLevel, // Habilidade fixa em 3 ou 5
+    hasChosen: false // Marca se o jogador já fez uma escolha
+  };
+}
+
+// Função para criar uma missão com base nas variáveis fixas
 function createMission(type) {
-  const difficulty = Math.floor(Math.random() * 10) + 1; // Dificuldade entre 1 e 10
-  const reward = Math.floor(Math.random() * 100) + 50; // Recompensa entre 50 e 150 créditos
-  const failureCost = Math.floor(Math.random() * 50) + 10; // Custo do fracasso entre 10 e 60 créditos
+  const missionList = missionsData[type]; // Seleciona o tipo de missão (individual ou coletiva)
+  const randomMission = missionList[Math.floor(Math.random() * missionList.length)]; // Escolhe uma missão aleatória
   
   return {
     type,
-    difficulty,
-    reward,
-    failureCost,
-    playersParticipating: [] // Jogadores que estão participando
+    name: randomMission.name,
+    reward: randomMission.reward,
+    failureCost: randomMission.failureCost,
+    difficulty: randomMission.difficulty,
+    playersParticipating: [] // Jogadores que estão participando dessa missão
   };
 }
 
 // Gerar missões ao início de cada rodada
 function generateMissions() {
+  console.log(`\nRODADA ${currentRound}:`);  // Exibe o número da rodada no início
   missions = [
     createMission('individual'),
     createMission('collective')
@@ -65,7 +80,7 @@ function divideIntoGroups(players) {
     }
   }
 
-  // Log dos grupos formados
+  // Log dos grupos formados com o número da rodada
   console.log('Grupos formados para a missão coletiva:');
   groups.forEach((group, index) => {
     console.log(`Grupo ${index + 1}: ${group.map(player => player.name).join(', ')}`);
@@ -130,23 +145,18 @@ function sendMissionsToAllPlayers() {
 
 // Quando um cliente se conecta ao WebSocket
 wss.on('connection', (ws) => {
-  console.log('Novo jogador conectado');
+  console.log(`Novo jogador conectado: Jogador ${players.length + 1}`);
 
   // Adiciona um jogador com informações iniciais
-  const player = {
-    ws,
-    credits: 100, // Créditos iniciais
-    skillLevel: Math.floor(Math.random() * 5) + 1, // Habilidade aleatória entre 1 e 5
-    name: `Jogador ${players.length + 1}`,
-    hasChosen: false // Inicializa com a marcação de não ter escolhido uma missão ainda
-  };
+  const player = createPlayer(`Jogador ${players.length + 1}`);
+  player.ws = ws; // Associa o WebSocket ao jogador
   players.push(player);
 
   // Envia as informações iniciais ao jogador
   ws.send(JSON.stringify({ type: 'init', data: player }));
 
   // Envia as missões para o jogador assim que ele se conecta
-  sendMissionsToAllPlayers(); // Envia missões para todos os jogadores
+  sendMissionsToAllPlayers();
 
   // Quando o jogador escolhe participar de uma missão
   ws.on('message', (message) => {
@@ -165,12 +175,13 @@ wss.on('connection', (ws) => {
       playersChoices.push({ player: player.name, choice: missionType });
       player.hasChosen = true;
 
+      // Log da escolha da missão
       console.log(`${player.name} escolheu a missão: ${missionType}`);
 
       // Verificar se todos os jogadores já escolheram suas missões
       if (playersChoices.length === players.length) {
         // Todos os jogadores tomaram sua decisão, resolver as missões
-        console.log('Todos os jogadores escolheram suas missões, resolvendo as missões agora.');
+        console.log(`Todos os jogadores escolheram suas missões, resolvendo as missões agora.`);
 
         let playerResults = [];
 
@@ -214,7 +225,7 @@ wss.on('connection', (ws) => {
         }
 
         // Exibe a quantidade de créditos no log do servidor ao final da rodada
-        console.log('Créditos após a rodada:');
+        console.log(`Créditos após a rodada:`);
         players.forEach(player => {
           console.log(`${player.name}: ${player.credits} créditos`);
         });
@@ -222,6 +233,7 @@ wss.on('connection', (ws) => {
         // Limpar as escolhas para a próxima rodada
         playersChoices = [];
         players.forEach(p => p.hasChosen = false); // Resetar a flag de escolhas
+        currentRound++; // Incrementar o número da rodada
         generateMissions(); // Gerar novas missões para a próxima rodada
       }
     }

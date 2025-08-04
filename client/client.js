@@ -1,4 +1,4 @@
-// client/client.js
+// client.js
 let ws;
 
 function conectar() {
@@ -24,8 +24,8 @@ function conectar() {
         // Quando o servidor envia as missões
         if (data.type === 'missions') {
             // Atualiza com as missões enviadas pelo servidor
-            updateMissionInfo(data.data[0], 'individual');
-            updateMissionInfo(data.data[1], 'collective');
+            updateMissionInfo(data.data[0], 'individual'); // Atualiza missão individual
+            updateMissionInfo(data.data[1], 'collective'); // Atualiza missão coletiva
         }
 
         // Quando o servidor envia o resultado da rodada
@@ -35,8 +35,8 @@ function conectar() {
             document.getElementById('roundCredits').innerText = `Créditos após a rodada: ${data.credits}`;
 
             // Atualiza as informações das missões para o jogador
-            updateMissionInfo(data.missions[0], 'individual'); // Atualiza com a missão individual (primeira missão)
-            updateMissionInfo(data.missions[1], 'collective'); // Atualiza com a missão coletiva (segunda missão)
+            updateMissionInfo(data.missions[0], 'individual'); // Atualiza missão individual
+            updateMissionInfo(data.missions[1], 'collective'); // Atualiza missão coletiva
         }
     };
 
@@ -58,11 +58,13 @@ function updateMissionInfo(mission, missionType) {
         document.getElementById('missionIndividualDifficulty').innerText = `Dificuldade: ${mission.difficulty}`;
         document.getElementById('missionIndividualReward').innerText = `Recompensa: ${mission.reward} créditos`;
         document.getElementById('missionIndividualFailureCost').innerText = `Custo de fracasso: ${mission.failureCost} créditos`;
+        document.getElementById('missionIndividualName').innerText = `Nome da Missão: ${mission.name}`;  // Nome da missão
     } else if (missionType === 'collective') {
         document.getElementById('missionCollectiveType').innerText = `Tipo: ${mission.type}`;
         document.getElementById('missionCollectiveDifficulty').innerText = `Dificuldade: ${mission.difficulty}`;
         document.getElementById('missionCollectiveReward').innerText = `Recompensa: ${mission.reward} créditos`;
         document.getElementById('missionCollectiveFailureCost').innerText = `Custo de fracasso: ${mission.failureCost} créditos`;
+        document.getElementById('missionCollectiveName').innerText = `Nome da Missão: ${mission.name}`;  // Nome da missão
     }
 }
 

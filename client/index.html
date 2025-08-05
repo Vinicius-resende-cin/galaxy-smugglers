@@ -216,6 +216,24 @@
             margin-top: 8px;
         }
 
+        .objective-info {
+            margin-top: 8px;
+        }
+
+        .objective-detail {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 4px;
+        }
+
+        .objective-detail:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+
         .status-waiting {
             background: linear-gradient(45deg, #ff9800, #f57c00);
             color: white;
@@ -492,6 +510,19 @@
                 <h3>🎯 Rodada</h3>
                 <div class="round-info">
                     <span id="currentRound">-</span> / <span id="maxRounds">-</span>
+                </div>
+            </div>
+            <div class="round-display" id="objectiveDisplay">
+                <h3>🏆 Objetivo</h3>
+                <div class="objective-info">
+                    <div class="objective-detail">
+                        <span class="mission-label">Tipo:</span>
+                        <span class="mission-value" id="matchObjectiveType">-</span>
+                    </div>
+                    <div class="objective-detail">
+                        <span class="mission-label">Cota:</span>
+                        <span class="mission-value" id="creditsQuota">- créditos</span>
+                    </div>
                 </div>
             </div>
             <div id="roundResult">

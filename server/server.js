@@ -5,7 +5,7 @@ const WebSocket = require('ws');
 const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
-const { INITIAL_CREDITS, FIXED_SKILL_LEVELS, missionsData } = require('./gameConfig');
+const { INITIAL_CREDITS, FIXED_SKILL_LEVELS, MATCH_OBJECTIVES, DEFAULT_CREDITS_QUOTA, DEFAULT_MAX_ROUNDS, missionsData } = require('./gameConfig');
 
 const app = express();
 const server = http.createServer(app);
@@ -21,7 +21,9 @@ let gameConfig = {
   matchSize: 3,
   initialCredits: INITIAL_CREDITS,
   fixedSkillLevels: [...FIXED_SKILL_LEVELS],
-  maxRounds: 10 // Limite máximo de rodadas por partida
+  maxRounds: DEFAULT_MAX_ROUNDS, // Limite máximo de rodadas por partida (para modo fixedRounds)
+  matchObjective: MATCH_OBJECTIVES.FIXED_ROUNDS, // Objetivo da partida
+  creditsQuota: DEFAULT_CREDITS_QUOTA // Cota de créditos para vencer
 };
 
 // Estruturas globais para matchmaking
@@ -111,6 +113,105 @@ function generateMissions(match) {
 // Função para rolar um dado de 6 lados
 function rollDice() {
   return Math.floor(Math.random() * 6) + 1;
+}
+
+// Função para verificar condições de vitória
+function checkWinConditions(match) {
+  const playersAboveQuota = match.players.filter(player => player.credits >= gameConfig.creditsQuota);
+  
+  if (gameConfig.matchObjective === MATCH_OBJECTIVES.FIXED_ROUNDS) {
+    // Modo rodadas fixas: verifica se atingiu o limite de rodadas
+    if (match.currentRound >= gameConfig.maxRounds) {
+      // Todos os jogadores que atingiram a cota vencem
+      if (playersAboveQuota.length > 0) {
+        return {
+          matchEnded: true,
+          winners: playersAboveQuota,
+          reason: `Partida finalizada após ${gameConfig.maxRounds} rodadas. Vencedores: ${playersAboveQuota.map(p => p.name).join(', ')}`
+        };
+      } else {
+        // Ninguém atingiu a cota, o jogo termina sem vencedores
+        return {
+          matchEnded: true,
+          winners: [],
+          reason: `Partida finalizada após ${gameConfig.maxRounds} rodadas. Nenhum jogador atingiu a cota de ${gameConfig.creditsQuota} créditos.`
+        };
+      }
+    }
+  } else if (gameConfig.matchObjective === MATCH_OBJECTIVES.INFINITE_ROUNDS) {
+    // Modo rodadas infinitas: verifica se alguém atingiu a cota
+    if (playersAboveQuota.length > 0) {
+      if (playersAboveQuota.length === 1) {
+        // Um único vencedor
+        return {
+          matchEnded: true,
+          winners: playersAboveQuota,
+          reason: `${playersAboveQuota[0].name} atingiu a cota de ${gameConfig.creditsQuota} créditos primeiro!`
+        };
+      } else {
+        // Múltiplos jogadores atingiram a cota simultaneamente
+        // Primeiro critério: maior quantidade de créditos
+        const maxCredits = Math.max(...playersAboveQuota.map(p => p.credits));
+        const topPlayers = playersAboveQuota.filter(p => p.credits === maxCredits);
+        
+        if (topPlayers.length === 1) {
+          return {
+            matchEnded: true,
+            winners: topPlayers,
+            reason: `${topPlayers[0].name} venceu com ${topPlayers[0].credits} créditos (maior quantidade entre os que atingiram a cota)!`
+          };
+        } else {
+          // Empate em créditos, decidir no dado
+          console.log(`Empate entre ${topPlayers.map(p => p.name).join(', ')} com ${maxCredits} créditos. Decidindo no dado...`);
+          
+          let remainingPlayers = [...topPlayers];
+          let rollRound = 1;
+          let rollHistory = [];
+          
+          // Continue rolling until there's only one winner
+          while (remainingPlayers.length > 1) {
+            console.log(`Rodada de dados ${rollRound}:`);
+            
+            let currentRoll = remainingPlayers.map(player => ({
+              player: player,
+              roll: rollDice()
+            }));
+            
+            // Log current round results
+            currentRoll.forEach(result => {
+              console.log(`${result.player.name} rolou ${result.roll}`);
+            });
+            
+            rollHistory.push(currentRoll);
+            
+            // Find the highest roll in this round
+            const highestRoll = Math.max(...currentRoll.map(r => r.roll));
+            remainingPlayers = currentRoll.filter(r => r.roll === highestRoll).map(r => r.player);
+            
+            console.log(`Maior resultado: ${highestRoll}. Jogadores restantes: ${remainingPlayers.map(p => p.name).join(', ')}`);
+            rollRound++;
+          }
+          
+          const winner = remainingPlayers[0];
+          const finalRollResult = rollHistory[rollHistory.length - 1].find(r => r.player.name === winner.name);
+          
+          // Create a detailed roll history string
+          const rollHistoryText = rollHistory.map((round, index) => {
+            const roundText = round.map(r => `${r.player.name}(${r.roll})`).join(', ');
+            return `Rodada ${index + 1}: ${roundText}`;
+          }).join(' | ');
+          
+          return {
+            matchEnded: true,
+            winners: [winner],
+            reason: `${winner.name} venceu no desempate do dado após ${rollRound - 1} rodada(s) (último resultado: ${finalRollResult.roll})! Histórico completo: ${rollHistoryText}`
+          };
+        }
+      }
+    }
+  }
+  
+  return { matchEnded: false };
 }
 
 // Função para gerar e salvar o relatório em JSON para uma partida específica
@@ -230,7 +331,9 @@ function sendMissionsToAllPlayersInMatch(match) {
       type: 'missions',
       data: match.missions,
       currentRound: match.currentRound,
-      maxRounds: gameConfig.maxRounds
+      maxRounds: gameConfig.maxRounds,
+      matchObjective: gameConfig.matchObjective,
+      creditsQuota: gameConfig.creditsQuota
     }));
   });
 }
@@ -379,8 +482,37 @@ wss.on('connection', (ws) => {
         match.gameReport.totalRounds = match.currentRound;
         generateReport(match);
 
-        // Verificar se a partida atingiu o limite máximo de rodadas
-        if (match.currentRound >= gameConfig.maxRounds) {
+        // Verificar condições de vitória
+        const winCondition = checkWinConditions(match);
+        
+        if (winCondition.matchEnded) {
+          console.log(`Partida ${matchId} finalizada: ${winCondition.reason}`);
+          
+          // Notificar jogadores sobre o resultado final
+          match.players.forEach(player => {
+            const isWinner = winCondition.winners.some(winner => winner.name === player.name);
+            player.ws.send(JSON.stringify({
+              type: 'matchEnded',
+              reason: winCondition.reason,
+              finalCredits: player.credits,
+              isWinner: isWinner,
+              winners: winCondition.winners.map(w => w.name)
+            }));
+          });
+          
+          // Remover partida
+          activeMatches.delete(matchId);
+          match.players.forEach(player => {
+            playerToMatch.delete(player.name);
+          });
+          
+          return; // Não continuar para a próxima rodada
+        }
+
+        // Verificar se a partida atingiu o limite máximo de rodadas (modo fixedRounds apenas)
+        if (gameConfig.matchObjective === MATCH_OBJECTIVES.FIXED_ROUNDS && match.currentRound >= gameConfig.maxRounds) {
+          // Esta condição já foi tratada na função checkWinConditions
+          // Mas mantemos como fallback de segurança
           console.log(`Partida ${matchId} atingiu o limite máximo de rodadas (${gameConfig.maxRounds}). Encerrando...`);
           
           // Notificar jogadores que a partida terminou
@@ -388,7 +520,9 @@ wss.on('connection', (ws) => {
             player.ws.send(JSON.stringify({
               type: 'matchEnded',
               reason: `Partida finalizada após ${gameConfig.maxRounds} rodadas`,
-              finalCredits: player.credits
+              finalCredits: player.credits,
+              isWinner: false,
+              winners: []
             }));
           });
           
@@ -491,7 +625,7 @@ app.get('/api/moderator/stats', (req, res) => {
 
 // Atualizar configurações do jogo
 app.post('/api/moderator/config', (req, res) => {
-  const { matchSize, initialCredits, fixedSkillLevels, maxRounds } = req.body;
+  const { matchSize, initialCredits, fixedSkillLevels, maxRounds, matchObjective, creditsQuota } = req.body;
   
   if (matchSize && matchSize > 0 && matchSize <= 10) {
     gameConfig.matchSize = matchSize;
@@ -508,6 +642,14 @@ app.post('/api/moderator/config', (req, res) => {
   
   if (maxRounds && maxRounds > 0) {
     gameConfig.maxRounds = maxRounds;
+  }
+  
+  if (matchObjective && Object.values(MATCH_OBJECTIVES).includes(matchObjective)) {
+    gameConfig.matchObjective = matchObjective;
+  }
+  
+  if (creditsQuota && creditsQuota > 0) {
+    gameConfig.creditsQuota = creditsQuota;
   }
   
   console.log('Configurações atualizadas pelo moderador:', gameConfig);

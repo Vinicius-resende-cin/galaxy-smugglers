@@ -40,6 +40,8 @@ async function refreshData() {
     document.getElementById('initialCredits').value = stats.gameConfig.initialCredits;
     document.getElementById('skillLevels').value = stats.gameConfig.fixedSkillLevels.join(',');
     document.getElementById('maxRounds').value = stats.gameConfig.maxRounds;
+    document.getElementById('matchObjective').value = stats.gameConfig.matchObjective || 'fixedRounds';
+    document.getElementById('creditsQuota').value = stats.gameConfig.creditsQuota || 500;
     
     // Atualizar partidas ativas
     displayMatches(stats.matches);
@@ -54,42 +56,59 @@ function displayMatches(matches) {
         return;
     }
     
-    container.innerHTML = matches.map(match => `
-        <div class="match-card">
-            <div class="match-header">
-                <span class="match-id">Partida: ${match.matchId.substring(0, 8)}...</span>
-                <span>Rodada: ${match.currentRound}</span>
-            </div>
-            
-            <div class="players-list">
-                <strong>Jogadores (${match.playersCount}):</strong>
-                ${match.players.map(player => `
-                    <div class="player-item">
-                        <div class="player-info">
-                            <strong>${player.name}</strong> 
-                            (Skill: ${player.skillLevel}, Créditos: ${player.credits})
-                            ${player.hasChosen ? ' ✅' : ' ⏳'}
+    // Get current stats for objective info
+    fetchStats().then(stats => {
+        container.innerHTML = matches.map(match => `
+            <div class="match-card">
+                <div class="match-header">
+                    <span class="match-id">Partida: ${match.matchId.substring(0, 8)}...</span>
+                    <span>Rodada: ${match.currentRound}</span>
+                </div>
+                
+                <div class="players-list">
+                    <strong>Jogadores (${match.playersCount}):</strong>
+                    ${match.players.map(player => `
+                        <div class="player-item">
+                            <div class="player-info">
+                                <strong>${player.name}</strong> 
+                                (Skill: ${player.skillLevel}, Créditos: ${player.credits.toFixed(2)})
+                                ${player.hasChosen ? ' ✅' : ' ⏳'}
+                            </div>
+                            <button class="btn btn-warning btn-sm" onclick="kickPlayer('${player.name}')">
+                                Remover
+                            </button>
                         </div>
-                        <button class="btn btn-warning btn-sm" onclick="kickPlayer('${player.name}')">
-                            Remover
-                        </button>
-                    </div>
-                `).join('')}
+                    `).join('')}
+                </div>
+                
+                <div class="missions-info">
+                    <strong>Missões Atuais:</strong><br>
+                    Individual: ${match.missions[0]?.name || 'N/A'}<br>
+                    Coletiva: ${match.missions[1]?.name || 'N/A'}<br>
+                    <strong>Objetivo:</strong> ${getObjectiveText(stats?.gameConfig?.matchObjective)}<br>
+                    <strong>Cota:</strong> ${stats?.gameConfig?.creditsQuota || 500} créditos
+                </div>
+                
+                <div style="text-align: center; margin-top: 15px;">
+                    <button class="btn btn-danger" onclick="endMatch('${match.matchId}')">
+                        Encerrar Partida
+                    </button>
+                </div>
             </div>
-            
-            <div class="missions-info">
-                <strong>Missões Atuais:</strong><br>
-                Individual: ${match.missions[0]?.name || 'N/A'}<br>
-                Coletiva: ${match.missions[1]?.name || 'N/A'}
-            </div>
-            
-            <div style="text-align: center; margin-top: 15px;">
-                <button class="btn btn-danger" onclick="endMatch('${match.matchId}')">
-                    Encerrar Partida
-                </button>
-            </div>
-        </div>
-    `).join('');
+        `).join('');
+    });
+}
+
+// Helper function to get objective text
+function getObjectiveText(objective) {
+    switch(objective) {
+        case 'fixedRounds':
+            return 'Rodadas Fixas';
+        case 'infiniteRounds':
+            return 'Primeiro a Atingir';
+        default:
+            return 'Desconhecido';
+    }
 }
 
 // Atualizar configurações do jogo
@@ -98,6 +117,8 @@ async function updateConfig() {
     const initialCredits = parseInt(document.getElementById('initialCredits').value);
     const skillLevelsStr = document.getElementById('skillLevels').value;
     const maxRounds = parseInt(document.getElementById('maxRounds').value);
+    const matchObjective = document.getElementById('matchObjective').value;
+    const creditsQuota = parseInt(document.getElementById('creditsQuota').value);
     
     // Validar níveis de habilidade
     let fixedSkillLevels;
@@ -115,7 +136,9 @@ async function updateConfig() {
         matchSize,
         initialCredits,
         fixedSkillLevels,
-        maxRounds
+        maxRounds,
+        matchObjective,
+        creditsQuota
     };
     
     try {

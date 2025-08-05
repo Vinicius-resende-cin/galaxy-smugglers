@@ -232,8 +232,19 @@
                     <input type="text" id="skillLevels" value="3,5">
                 </div>
                 <div class="form-group">
-                    <label for="maxRounds">Máximo de Rodadas:</label>
+                    <label for="maxRounds">Máximo de Rodadas (modo rodadas fixas):</label>
                     <input type="number" id="maxRounds" min="5" max="50" value="10">
+                </div>
+                <div class="form-group">
+                    <label for="matchObjective">Objetivo da Partida:</label>
+                    <select id="matchObjective" style="padding: 10px; border: 1px solid #4fc3f7; border-radius: 5px; background: #1a1a2e; color: #eee;">
+                        <option value="fixedRounds">Rodadas Fixas (todos que atingem a cota vencem)</option>
+                        <option value="infiniteRounds">Primeiro a Atingir (vence quem chegar primeiro na cota)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="creditsQuota">Cota de Créditos para Vencer:</label>
+                    <input type="number" id="creditsQuota" min="200" max="2000" step="50" value="500">
                 </div>
             </form>
             <button class="btn btn-primary" onclick="updateConfig()">Atualizar Configurações</button>

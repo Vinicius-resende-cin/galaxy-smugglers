@@ -55,6 +55,7 @@ function conectar() {
             updateMissionInfo(data.data[1], 'collective'); // Atualiza missão coletiva
             updateGameStatus('Escolha sua missão!', 'status-in-game');
             updateRoundInfo(data.currentRound, data.maxRounds);
+            updateObjectiveInfo(data.matchObjective, data.creditsQuota, data.maxRounds);
             document.getElementById('roundOutcome').innerText = 'Missões disponíveis';
             
             // Only show choice instruction on first round
@@ -105,12 +106,25 @@ function conectar() {
 
         // Quando a partida é encerrada
         if (data.type === 'matchEnded') {
-            updateGameStatus('Partida encerrada', 'status-error');
-            document.getElementById('roundOutcome').innerText = `Partida encerrada`;
+            const isWinner = data.isWinner || false;
+            const statusClass = isWinner ? 'status-match-found' : 'status-error';
+            const statusMessage = isWinner ? '🏆 VITÓRIA!' : 'Partida encerrada';
+            
+            updateGameStatus(statusMessage, statusClass);
+            document.getElementById('roundOutcome').innerText = isWinner ? '🎉 Você venceu!' : `Partida encerrada`;
             document.getElementById('roundCredits').innerText = data.reason || 'Jogo finalizado';
+            
             if (data.finalCredits) {
                 updateCreditsDisplay(data.finalCredits);
             }
+            
+            if (data.winners && data.winners.length > 0) {
+                const winnerText = data.winners.length === 1 ? 
+                    `Vencedor: ${data.winners[0]}` : 
+                    `Vencedores: ${data.winners.join(', ')}`;
+                updateCreditChange(winnerText, isWinner ? 'positive' : 'neutral');
+            }
+            
             disableButtons();
         }
 
@@ -154,6 +168,29 @@ function updateCreditsDisplay(credits) {
 function updateRoundInfo(currentRound, maxRounds) {
     document.getElementById('currentRound').innerText = currentRound;
     document.getElementById('maxRounds').innerText = maxRounds;
+}
+
+// Atualizar informações do objetivo da partida
+function updateObjectiveInfo(matchObjective, creditsQuota, maxRounds) {
+    let objectiveTypeText = '';
+    let maxRoundsDisplay = '';
+    
+    if (matchObjective === 'fixedRounds') {
+        objectiveTypeText = 'Rodadas Fixas';
+        maxRoundsDisplay = maxRounds;
+    } else if (matchObjective === 'infiniteRounds') {
+        objectiveTypeText = 'Primeiro a Atingir';
+        maxRoundsDisplay = '∞';
+    } else {
+        objectiveTypeText = 'Desconhecido';
+        maxRoundsDisplay = '-';
+    }
+    
+    document.getElementById('matchObjectiveType').innerText = objectiveTypeText;
+    document.getElementById('creditsQuota').innerText = `${Number(creditsQuota).toFixed(2)} créditos`;
+    
+    // Update the max rounds display to show infinity symbol for infinite mode
+    document.getElementById('maxRounds').innerText = maxRoundsDisplay;
 }
 
 // Atualizar display de mudança de créditos

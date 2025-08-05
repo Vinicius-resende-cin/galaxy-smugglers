@@ -6,6 +6,16 @@ const INITIAL_CREDITS = 100;
 // Possíveis valores de habilidades fixas (3 ou 5)
 const FIXED_SKILL_LEVELS = [3, 5];
 
+// Objetivos da partida
+const MATCH_OBJECTIVES = {
+  FIXED_ROUNDS: 'fixedRounds', // Número fixo de rodadas, todos que atingem a cota vencem
+  INFINITE_ROUNDS: 'infiniteRounds' // Rodadas infinitas, primeiro a atingir a cota vence
+};
+
+// Configurações padrão dos objetivos
+const DEFAULT_CREDITS_QUOTA = 500; // Cota de créditos para vencer
+const DEFAULT_MAX_ROUNDS = 10; // Rodadas máximas (para modo fixedRounds)
+
 // Possibilidades de missões individuais e coletivas com suas recompensas, prejuízos e dificuldade
 const missionsData = {
   individual: [
@@ -23,5 +33,8 @@ const missionsData = {
 module.exports = {
   INITIAL_CREDITS,
   FIXED_SKILL_LEVELS,
+  MATCH_OBJECTIVES,
+  DEFAULT_CREDITS_QUOTA,
+  DEFAULT_MAX_ROUNDS,
   missionsData
 };

@@ -13,16 +13,13 @@ const server = http.createServer(app);
 // Criação de um servidor WebSocket usando o pacote 'ws'
 const wss = new WebSocket.Server({ server });
 
-let players = []; // Armazenar jogadores conectados
-let currentRound = 1; // Controla o número da rodada
-let missions = []; // Armazenar missões
-let playersChoices = []; // Armazenar as escolhas dos jogadores para as missões
-let gameId = uuidv4(); // ID único para esta partida
-let gameReport = {
-  gameId: gameId,
-  totalRounds: 0,
-  players: {}
-}; // Armazenar dados para relatório
+// Constantes do matchmaking
+const MATCH_SIZE = 3; // Número de jogadores por partida
+
+// Estruturas globais para matchmaking
+let waitingPlayers = []; // Jogadores aguardando partida
+let activeMatches = new Map(); // Partidas ativas (matchId -> match data)
+let playerToMatch = new Map(); // Mapeamento jogador -> matchId
 
 // Função para criar jogadores com base nas variáveis fixas
 function createPlayer(name) {
@@ -36,14 +33,47 @@ function createPlayer(name) {
     hasChosen: false // Marca se o jogador já fez uma escolha
   };
 
-  // Inicializar dados do jogador no relatório
-  gameReport.players[name] = {
-    skillLevel: skillLevel,
+  return player;
+}
+
+// Função para criar uma nova partida
+function createMatch() {
+  const matchId = uuidv4();
+  
+  const match = {
+    matchId: matchId,
+    players: [],
+    currentRound: 1,
+    missions: [],
+    playersChoices: [],
+    gameReport: {
+      matchId: matchId,
+      totalRounds: 0,
+      players: {}
+    }
+  };
+  
+  return match;
+}
+
+// Função para adicionar um jogador a uma partida
+function addPlayerToMatch(player, match) {
+  match.players.push(player);
+  playerToMatch.set(player.name, match.matchId);
+  
+  // Inicializar dados do jogador no relatório da partida
+  match.gameReport.players[player.name] = {
+    skillLevel: player.skillLevel,
     missionHistory: [],
     creditsHistory: [INITIAL_CREDITS]
   };
+}
 
-  return player;
+// Função para iniciar uma partida quando estiver cheia
+function startMatch(match) {
+  console.log(`Iniciando partida ${match.matchId} com ${match.players.length} jogadores`);
+  generateMissions(match);
+  sendMissionsToAllPlayersInMatch(match);
 }
 
 // Função para criar uma missão com base nas variáveis fixas
@@ -61,10 +91,10 @@ function createMission(type) {
   };
 }
 
-// Gerar missões ao início de cada rodada
-function generateMissions() {
-  console.log(`\nRODADA ${currentRound}:`);  // Exibe o número da rodada no início
-  missions = [
+// Gerar missões ao início de cada rodada para uma partida específica
+function generateMissions(match) {
+  console.log(`\nRODADA ${match.currentRound} - Partida ${match.matchId}:`);
+  match.missions = [
     createMission('individual'),
     createMission('collective')
   ];
@@ -75,18 +105,18 @@ function rollDice() {
   return Math.floor(Math.random() * 6) + 1;
 }
 
-// Função para gerar e salvar o relatório em JSON
-function generateReport() {
+// Função para gerar e salvar o relatório em JSON para uma partida específica
+function generateReport(match) {
   const reportData = {
-    gameId: gameReport.gameId,
-    totalRounds: gameReport.totalRounds,
-    players: gameReport.players,
+    matchId: match.matchId,
+    totalRounds: match.gameReport.totalRounds,
+    players: match.gameReport.players,
     generatedAt: new Date().toISOString(),
     lastUpdated: new Date().toISOString()
   };
 
   const reportsDir = path.join(__dirname, '..', 'reports');
-  const filename = `${gameId}.json`;
+  const filename = `${match.matchId}.json`;
   const filepath = path.join(reportsDir, filename);
 
   // Garante que o diretório reports existe
@@ -141,7 +171,7 @@ function divideIntoGroups(players) {
 }
 
 // Função para resolver missões individuais
-function resolveIndividualMission(player, mission) {
+function resolveIndividualMission(player, mission, match) {
   const roll = rollDice();
   const success = (player.skillLevel + roll >= mission.difficulty);
 
@@ -152,8 +182,8 @@ function resolveIndividualMission(player, mission) {
   }
 
   // Adicionar ao histórico do relatório
-  gameReport.players[player.name].missionHistory.push({
-    round: currentRound,
+  match.gameReport.players[player.name].missionHistory.push({
+    round: match.currentRound,
     missionType: 'individual',
     missionName: mission.name,
     result: success ? 'success' : 'failure',
@@ -165,7 +195,7 @@ function resolveIndividualMission(player, mission) {
 }
 
 // Função para resolver missões coletivas
-function resolveCollectiveMission(groups, mission) {
+function resolveCollectiveMission(groups, mission, match) {
   const groupResults = [];
   
   groups.forEach(group => {
@@ -181,8 +211,8 @@ function resolveCollectiveMission(groups, mission) {
 
     // Adicionar ao histórico do relatório para cada jogador do grupo
     group.forEach(player => {
-      gameReport.players[player.name].missionHistory.push({
-        round: currentRound,
+      match.gameReport.players[player.name].missionHistory.push({
+        round: match.currentRound,
         missionType: 'collective',
         missionName: mission.name,
         result: success ? 'success' : 'failure',
@@ -207,30 +237,66 @@ function sendToPlayer(player, message) {
   player.ws.send(JSON.stringify(message));
 }
 
-// Enviar as missões para todos os jogadores
-function sendMissionsToAllPlayers() {
-  players.forEach(player => {
+// Enviar as missões para todos os jogadores de uma partida específica
+function sendMissionsToAllPlayersInMatch(match) {
+  match.players.forEach(player => {
     player.ws.send(JSON.stringify({
       type: 'missions',
-      data: missions
+      data: match.missions
     }));
   });
 }
 
 // Quando um cliente se conecta ao WebSocket
 wss.on('connection', (ws) => {
-  console.log(`Novo jogador conectado: Jogador ${players.length + 1}`);
+  console.log(`Novo jogador conectado`);
 
-  // Adiciona um jogador com informações iniciais
-  const player = createPlayer(`Jogador ${players.length + 1}`);
+  // Criar jogador
+  const playerCount = waitingPlayers.length + Array.from(activeMatches.values()).reduce((total, match) => total + match.players.length, 0) + 1;
+  const player = createPlayer(`Jogador ${playerCount}`);
   player.ws = ws; // Associa o WebSocket ao jogador
-  players.push(player);
 
   // Envia as informações iniciais ao jogador
   ws.send(JSON.stringify({ type: 'init', data: player }));
 
-  // Envia as missões para o jogador assim que ele se conecta
-  sendMissionsToAllPlayers();
+  // Adicionar jogador à fila de espera
+  waitingPlayers.push(player);
+  console.log(`${player.name} adicionado à fila de espera. Jogadores na fila: ${waitingPlayers.length}`);
+
+  // Verificar se temos jogadores suficientes para uma partida
+  if (waitingPlayers.length >= MATCH_SIZE) {
+    // Criar nova partida com os primeiros jogadores da fila
+    const newMatch = createMatch();
+    
+    // Mover jogadores da fila para a partida
+    for (let i = 0; i < MATCH_SIZE; i++) {
+      const playerFromQueue = waitingPlayers.shift();
+      addPlayerToMatch(playerFromQueue, newMatch);
+    }
+    
+    // Adicionar partida às partidas ativas
+    activeMatches.set(newMatch.matchId, newMatch);
+    
+    console.log(`Partida ${newMatch.matchId} criada com ${newMatch.players.length} jogadores`);
+    
+    // Notificar jogadores que a partida começou
+    newMatch.players.forEach(p => {
+      p.ws.send(JSON.stringify({ 
+        type: 'matchFound', 
+        matchId: newMatch.matchId,
+        players: newMatch.players.map(player => ({ name: player.name, skillLevel: player.skillLevel, credits: player.credits }))
+      }));
+    });
+    
+    // Iniciar a partida
+    startMatch(newMatch);
+  } else {
+    // Informar ao jogador que está aguardando outros jogadores
+    ws.send(JSON.stringify({ 
+      type: 'waitingForPlayers', 
+      message: `Aguardando outros jogadores... (${waitingPlayers.length}/${MATCH_SIZE})` 
+    }));
+  }
 
   // Quando o jogador escolhe participar de uma missão
   ws.on('message', (message) => {
@@ -239,6 +305,19 @@ wss.on('connection', (ws) => {
     if (data.type === 'chooseMission') {
       const { missionType } = data;
 
+      // Encontrar a partida do jogador
+      const matchId = playerToMatch.get(player.name);
+      if (!matchId) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Você não está em uma partida ativa.' }));
+        return;
+      }
+
+      const match = activeMatches.get(matchId);
+      if (!match) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Partida não encontrada.' }));
+        return;
+      }
+
       // Verificar se o jogador já fez uma escolha
       if (player.hasChosen) {
         ws.send(JSON.stringify({ type: 'error', message: 'Você já escolheu uma missão, aguarde a rodada terminar.' }));
@@ -246,44 +325,43 @@ wss.on('connection', (ws) => {
       }
 
       // Marcar a escolha do jogador
-      playersChoices.push({ player: player.name, choice: missionType });
+      match.playersChoices.push({ player: player.name, choice: missionType });
       player.hasChosen = true;
 
       // Log da escolha da missão
-      console.log(`${player.name} escolheu a missão: ${missionType}`);
+      console.log(`${player.name} escolheu a missão: ${missionType} na partida ${matchId}`);
 
-      // Verificar se todos os jogadores já escolheram suas missões
-      if (playersChoices.length === players.length) {
+      // Verificar se todos os jogadores da partida já escolheram suas missões
+      if (match.playersChoices.length === match.players.length) {
         // Todos os jogadores tomaram sua decisão, resolver as missões
-        console.log(`Todos os jogadores escolheram suas missões, resolvendo as missões agora.`);
-
-        let playerResults = [];
+        console.log(`Todos os jogadores da partida ${matchId} escolheram suas missões, resolvendo as missões agora.`);
 
         // Resolução das missões individuais
-        playersChoices.forEach(choice => {
-          const selectedMission = missions.find(m => m.type === choice.choice);
+        match.playersChoices.forEach(choice => {
+          const selectedMission = match.missions.find(m => m.type === choice.choice);
           if (choice.choice === 'individual') {
-            const result = resolveIndividualMission(players.find(p => p.name === choice.player), selectedMission);
-            sendToPlayer(players.find(p => p.name === choice.player), {
+            const matchPlayer = match.players.find(p => p.name === choice.player);
+            const result = resolveIndividualMission(matchPlayer, selectedMission, match);
+            sendToPlayer(matchPlayer, {
               type: 'roundEnd',
               playerName: choice.player,
               success: result.success ? 'Venceu' : 'Perdeu',
               credits: result.credits,
-              missions: missions // Envia as novas missões
+              missions: match.missions
             });
           }
         });
 
         // Resolução das missões coletivas
-        const collectiveMission = missions.find(m => m.type === 'collective');
-        const playersForCollective = players.filter(p => {
-          return playersChoices.find(c => c.player === p.name && c.choice === 'collective');
+        const collectiveMission = match.missions.find(m => m.type === 'collective');
+        const playersForCollective = match.players.filter(p => {
+          return match.playersChoices.find(c => c.player === p.name && c.choice === 'collective');
         });
 
         if (playersForCollective.length > 0) {
           // Divide os jogadores em grupos equilibrados e aleatórios
           const groups = divideIntoGroups(playersForCollective);
-          const groupResults = resolveCollectiveMission(groups, collectiveMission);
+          const groupResults = resolveCollectiveMission(groups, collectiveMission, match);
 
           groupResults.forEach(groupResult => {
             groupResult.group.forEach(player => {
@@ -292,29 +370,30 @@ wss.on('connection', (ws) => {
                 playerName: player.name,
                 success: groupResult.success ? 'Venceu' : 'Perdeu',
                 credits: player.credits,
-                missions: missions // Envia as novas missões
+                missions: match.missions
               });
             });
           });
         }
 
         // Exibe a quantidade de créditos no log do servidor ao final da rodada
-        console.log(`Créditos após a rodada:`);
-        players.forEach(player => {
+        console.log(`Créditos após a rodada na partida ${matchId}:`);
+        match.players.forEach(player => {
           console.log(`${player.name}: ${player.credits} créditos`);
           // Adicionar créditos atuais ao histórico
-          gameReport.players[player.name].creditsHistory.push(player.credits);
+          match.gameReport.players[player.name].creditsHistory.push(player.credits);
         });
 
         // Atualizar total de rodadas e gerar relatório
-        gameReport.totalRounds = currentRound;
-        generateReport();
+        match.gameReport.totalRounds = match.currentRound;
+        generateReport(match);
 
         // Limpar as escolhas para a próxima rodada
-        playersChoices = [];
-        players.forEach(p => p.hasChosen = false); // Resetar a flag de escolhas
-        currentRound++; // Incrementar o número da rodada
-        generateMissions(); // Gerar novas missões para a próxima rodada
+        match.playersChoices = [];
+        match.players.forEach(p => p.hasChosen = false); // Resetar a flag de escolhas
+        match.currentRound++; // Incrementar o número da rodada
+        generateMissions(match); // Gerar novas missões para a próxima rodada
+        sendMissionsToAllPlayersInMatch(match); // Enviar novas missões para todos os jogadores da partida
       }
     }
   });
@@ -322,7 +401,44 @@ wss.on('connection', (ws) => {
   // Quando o jogador se desconectar
   ws.on('close', () => {
     console.log(`Jogador ${player.name} desconectado`);
-    players = players.filter(p => p !== player);
+    
+    // Remover da fila de espera se estiver lá
+    const waitingIndex = waitingPlayers.findIndex(p => p.name === player.name);
+    if (waitingIndex !== -1) {
+      waitingPlayers.splice(waitingIndex, 1);
+      console.log(`${player.name} removido da fila de espera`);
+      return;
+    }
+    
+    // Remover da partida ativa se estiver em uma
+    const matchId = playerToMatch.get(player.name);
+    if (matchId) {
+      const match = activeMatches.get(matchId);
+      if (match) {
+        const playerIndex = match.players.findIndex(p => p.name === player.name);
+        if (playerIndex !== -1) {
+          match.players.splice(playerIndex, 1);
+          console.log(`${player.name} removido da partida ${matchId}`);
+          
+          // Se a partida ficar vazia, removê-la
+          if (match.players.length === 0) {
+            activeMatches.delete(matchId);
+            console.log(`Partida ${matchId} removida (sem jogadores)`);
+          } else {
+            // Notificar outros jogadores da partida sobre a desconexão
+            match.players.forEach(p => {
+              p.ws.send(JSON.stringify({
+                type: 'playerDisconnected',
+                playerName: player.name,
+                remainingPlayers: match.players.length
+              }));
+            });
+          }
+        }
+      }
+      playerToMatch.delete(player.name);
+    }
+    
     // Nota: Mantemos os dados do jogador no gameReport para fins históricos
     // mesmo após a desconexão, para que o relatório contenha o histórico completo do jogo
   });
@@ -334,6 +450,5 @@ app.use(express.static('client'));
 // Inicializar o servidor na porta 3000
 server.listen(3000, () => {
   console.log('Servidor WebSocket rodando na porta 3000');
-  console.log(`ID do jogo: ${gameId}`);
-  generateMissions(); // Gerar missões no início do jogo
+  console.log(`Sistema de matchmaking ativo - ${MATCH_SIZE} jogadores por partida`);
 });

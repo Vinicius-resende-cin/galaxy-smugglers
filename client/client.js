@@ -21,6 +21,23 @@ function conectar() {
             document.getElementById('playerCredits').innerText = `Créditos: ${data.data.credits}`;
         }
 
+        // Quando o jogador está aguardando outros jogadores
+        if (data.type === 'waitingForPlayers') {
+            document.getElementById('roundOutcome').innerText = data.message;
+            document.getElementById('roundCredits').innerText = 'Aguardando partida começar...';
+        }
+
+        // Quando uma partida é encontrada
+        if (data.type === 'matchFound') {
+            document.getElementById('roundOutcome').innerText = `Partida encontrada! ID: ${data.matchId}`;
+            document.getElementById('roundCredits').innerText = `Jogadores: ${data.players.map(p => p.name).join(', ')}`;
+        }
+
+        // Quando um jogador se desconecta
+        if (data.type === 'playerDisconnected') {
+            document.getElementById('roundOutcome').innerText = `${data.playerName} desconectou. Jogadores restantes: ${data.remainingPlayers}`;
+        }
+
         // Quando o servidor envia as missões
         if (data.type === 'missions') {
             // Atualiza com as missões enviadas pelo servidor
@@ -37,6 +54,11 @@ function conectar() {
             // Atualiza as informações das missões para o jogador
             updateMissionInfo(data.missions[0], 'individual'); // Atualiza missão individual
             updateMissionInfo(data.missions[1], 'collective'); // Atualiza missão coletiva
+        }
+
+        // Quando há um erro
+        if (data.type === 'error') {
+            document.getElementById('roundOutcome').innerText = `Erro: ${data.message}`;
         }
     };
 

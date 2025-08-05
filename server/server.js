@@ -194,7 +194,7 @@ function resolveCollectiveMission(players, mission, match) {
 
   // Aplicar resultado a todos os jogadores
   if (success) {
-    players.forEach(player => player.credits += mission.reward);
+    players.forEach(player => player.credits += (mission.reward / players.length));
   } else {
     players.forEach(player => player.credits -= mission.failureCost);
   }

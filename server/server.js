@@ -29,6 +29,7 @@ let gameConfig = {
 // Estruturas globais para matchmaking
 let waitingPlayers = []; // Jogadores aguardando partida
 let activeMatches = new Map(); // Partidas ativas (matchId -> match data)
+let availableMatches = new Map(); // Partidas disponíveis para entrada (matchId -> match data)
 let playerToMatch = new Map(); // Mapeamento jogador -> matchId
 
 // Função para criar jogadores com base nas variáveis fixas
@@ -47,7 +48,7 @@ function createPlayer(name) {
 }
 
 // Função para criar uma nova partida
-function createMatch() {
+function createMatch(matchConfig = {}) {
   const matchId = uuidv4();
   
   const match = {
@@ -56,10 +57,22 @@ function createMatch() {
     currentRound: 1,
     missions: [],
     playersChoices: [],
+    status: 'waiting', // 'waiting', 'active', 'finished'
+    maxPlayers: matchConfig.maxPlayers || gameConfig.matchSize,
+    matchObjective: matchConfig.matchObjective || gameConfig.matchObjective,
+    creditsQuota: matchConfig.creditsQuota || gameConfig.creditsQuota,
+    maxRounds: matchConfig.maxRounds || gameConfig.maxRounds,
+    createdAt: new Date().toISOString(),
     gameReport: {
       matchId: matchId,
       totalRounds: 0,
-      players: {}
+      players: {},
+      matchConfig: {
+        maxPlayers: matchConfig.maxPlayers || gameConfig.matchSize,
+        matchObjective: matchConfig.matchObjective || gameConfig.matchObjective,
+        creditsQuota: matchConfig.creditsQuota || gameConfig.creditsQuota,
+        maxRounds: matchConfig.maxRounds || gameConfig.maxRounds
+      }
     }
   };
   
@@ -117,28 +130,28 @@ function rollDice() {
 
 // Função para verificar condições de vitória
 function checkWinConditions(match) {
-  const playersAboveQuota = match.players.filter(player => player.credits >= gameConfig.creditsQuota);
+  const playersAboveQuota = match.players.filter(player => player.credits >= match.creditsQuota);
   
-  if (gameConfig.matchObjective === MATCH_OBJECTIVES.FIXED_ROUNDS) {
+  if (match.matchObjective === MATCH_OBJECTIVES.FIXED_ROUNDS) {
     // Modo rodadas fixas: verifica se atingiu o limite de rodadas
-    if (match.currentRound >= gameConfig.maxRounds) {
+    if (match.currentRound >= match.maxRounds) {
       // Todos os jogadores que atingiram a cota vencem
       if (playersAboveQuota.length > 0) {
         return {
           matchEnded: true,
           winners: playersAboveQuota,
-          reason: `Partida finalizada após ${gameConfig.maxRounds} rodadas. Vencedores: ${playersAboveQuota.map(p => p.name).join(', ')}`
+          reason: `Partida finalizada após ${match.maxRounds} rodadas. Vencedores: ${playersAboveQuota.map(p => p.name).join(', ')}`
         };
       } else {
         // Ninguém atingiu a cota, o jogo termina sem vencedores
         return {
           matchEnded: true,
           winners: [],
-          reason: `Partida finalizada após ${gameConfig.maxRounds} rodadas. Nenhum jogador atingiu a cota de ${gameConfig.creditsQuota} créditos.`
+          reason: `Partida finalizada após ${match.maxRounds} rodadas. Nenhum jogador atingiu a cota de ${match.creditsQuota} créditos.`
         };
       }
     }
-  } else if (gameConfig.matchObjective === MATCH_OBJECTIVES.INFINITE_ROUNDS) {
+  } else if (match.matchObjective === MATCH_OBJECTIVES.INFINITE_ROUNDS) {
     // Modo rodadas infinitas: verifica se alguém atingiu a cota
     if (playersAboveQuota.length > 0) {
       if (playersAboveQuota.length === 1) {
@@ -146,7 +159,7 @@ function checkWinConditions(match) {
         return {
           matchEnded: true,
           winners: playersAboveQuota,
-          reason: `${playersAboveQuota[0].name} atingiu a cota de ${gameConfig.creditsQuota} créditos primeiro!`
+          reason: `${playersAboveQuota[0].name} atingiu a cota de ${match.creditsQuota} créditos primeiro!`
         };
       } else {
         // Múltiplos jogadores atingiram a cota simultaneamente
@@ -331,11 +344,74 @@ function sendMissionsToAllPlayersInMatch(match) {
       type: 'missions',
       data: match.missions,
       currentRound: match.currentRound,
-      maxRounds: gameConfig.maxRounds,
-      matchObjective: gameConfig.matchObjective,
-      creditsQuota: gameConfig.creditsQuota
+      maxRounds: match.maxRounds,
+      matchObjective: match.matchObjective,
+      creditsQuota: match.creditsQuota
     }));
   });
+}
+
+// Função para tentar adicionar jogador automaticamente a uma partida
+function tryAutoJoinMatch(player) {
+  // Procurar por partidas disponíveis que não estejam cheias
+  for (const [matchId, match] of availableMatches) {
+    if (match.players.length < match.maxPlayers && match.status === 'waiting') {
+      // Remover jogador da fila de espera
+      const waitingIndex = waitingPlayers.findIndex(p => p.name === player.name);
+      if (waitingIndex !== -1) {
+        waitingPlayers.splice(waitingIndex, 1);
+      }
+
+      // Adicionar jogador à partida
+      addPlayerToMatch(player, match);
+      console.log(`${player.name} automaticamente adicionado à partida ${matchId} (${match.players.length}/${match.maxPlayers})`);
+
+      // Notificar o jogador que entrou na partida
+      player.ws.send(JSON.stringify({
+        type: 'matchJoined',
+        matchId: matchId,
+        currentPlayers: match.players.length,
+        maxPlayers: match.maxPlayers,
+        players: match.players.map(p => ({ name: p.name, skillLevel: p.skillLevel, credits: p.credits }))
+      }));
+
+      // Notificar outros jogadores da partida sobre o novo jogador
+      match.players.forEach(p => {
+        if (p.name !== player.name) {
+          p.ws.send(JSON.stringify({
+            type: 'playerJoined',
+            playerName: player.name,
+            currentPlayers: match.players.length,
+            maxPlayers: match.maxPlayers,
+            players: match.players.map(player => ({ name: player.name, skillLevel: player.skillLevel, credits: player.credits }))
+          }));
+        }
+      });
+
+      // Se a partida estiver cheia, movê-la para partidas ativas e iniciar
+      if (match.players.length >= match.maxPlayers) {
+        match.status = 'active';
+        availableMatches.delete(matchId);
+        activeMatches.set(matchId, match);
+        
+        console.log(`Partida ${matchId} está cheia, iniciando automaticamente...`);
+        
+        // Notificar todos os jogadores que a partida começou
+        match.players.forEach(p => {
+          p.ws.send(JSON.stringify({ 
+            type: 'matchStarted', 
+            matchId: matchId
+          }));
+        });
+        
+        // Iniciar a partida
+        startMatch(match);
+      }
+
+      return true; // Jogador foi adicionado com sucesso
+    }
+  }
+  return false; // Nenhuma partida disponível encontrada
 }
 
 // Quando um cliente se conecta ao WebSocket
@@ -343,49 +419,26 @@ wss.on('connection', (ws) => {
   console.log(`Novo jogador conectado`);
 
   // Criar jogador
-  const playerCount = waitingPlayers.length + Array.from(activeMatches.values()).reduce((total, match) => total + match.players.length, 0) + 1;
+  const playerCount = waitingPlayers.length + Array.from(activeMatches.values()).reduce((total, match) => total + match.players.length, 0) + Array.from(availableMatches.values()).reduce((total, match) => total + match.players.length, 0) + 1;
   const player = createPlayer(`Jogador ${playerCount}`);
   player.ws = ws; // Associa o WebSocket ao jogador
 
   // Envia as informações iniciais ao jogador
   ws.send(JSON.stringify({ type: 'init', data: player }));
 
-  // Adicionar jogador à fila de espera
-  waitingPlayers.push(player);
-  console.log(`${player.name} adicionado à fila de espera. Jogadores na fila: ${waitingPlayers.length}`);
-
-  // Verificar se temos jogadores suficientes para uma partida
-  if (waitingPlayers.length >= MATCH_SIZE) {
-    // Criar nova partida com os primeiros jogadores da fila
-    const newMatch = createMatch();
+  // Tentar adicionar automaticamente a uma partida disponível
+  const joinedMatch = tryAutoJoinMatch(player);
+  
+  if (!joinedMatch) {
+    // Se não conseguiu entrar em nenhuma partida, adicionar à fila de espera
+    waitingPlayers.push(player);
+    console.log(`${player.name} adicionado à fila de espera. Jogadores na fila: ${waitingPlayers.length}`);
     
-    // Mover jogadores da fila para a partida
-    for (let i = 0; i < MATCH_SIZE; i++) {
-      const playerFromQueue = waitingPlayers.shift();
-      addPlayerToMatch(playerFromQueue, newMatch);
-    }
-    
-    // Adicionar partida às partidas ativas
-    activeMatches.set(newMatch.matchId, newMatch);
-    
-    console.log(`Partida ${newMatch.matchId} criada com ${newMatch.players.length} jogadores`);
-    
-    // Notificar jogadores que a partida começou
-    newMatch.players.forEach(p => {
-      p.ws.send(JSON.stringify({ 
-        type: 'matchFound', 
-        matchId: newMatch.matchId,
-        players: newMatch.players.map(player => ({ name: player.name, skillLevel: player.skillLevel, credits: player.credits }))
-      }));
-    });
-    
-    // Iniciar a partida
-    startMatch(newMatch);
-  } else {
-    // Informar ao jogador que está aguardando outros jogadores
-    ws.send(JSON.stringify({ 
-      type: 'waitingForPlayers', 
-      message: `Aguardando outros jogadores... (${waitingPlayers.length}/${MATCH_SIZE})` 
+    // Notificar o jogador que está na fila de espera
+    ws.send(JSON.stringify({
+      type: 'waitingForMatch',
+      message: 'Aguardando partida disponível...',
+      queuePosition: waitingPlayers.length
     }));
   }
 
@@ -440,7 +493,7 @@ wss.on('connection', (ws) => {
               credits: result.credits,
               missions: match.missions,
               currentRound: match.currentRound,
-              maxRounds: gameConfig.maxRounds
+              maxRounds: match.maxRounds
             });
           }
         });
@@ -464,7 +517,7 @@ wss.on('connection', (ws) => {
                 credits: player.credits,
                 missions: match.missions,
                 currentRound: match.currentRound,
-                maxRounds: gameConfig.maxRounds
+                maxRounds: match.maxRounds
               });
             });
           });
@@ -488,6 +541,8 @@ wss.on('connection', (ws) => {
         if (winCondition.matchEnded) {
           console.log(`Partida ${matchId} finalizada: ${winCondition.reason}`);
           
+          match.status = 'finished';
+          
           // Notificar jogadores sobre o resultado final
           match.players.forEach(player => {
             const isWinner = winCondition.winners.some(winner => winner.name === player.name);
@@ -510,16 +565,18 @@ wss.on('connection', (ws) => {
         }
 
         // Verificar se a partida atingiu o limite máximo de rodadas (modo fixedRounds apenas)
-        if (gameConfig.matchObjective === MATCH_OBJECTIVES.FIXED_ROUNDS && match.currentRound >= gameConfig.maxRounds) {
+        if (match.matchObjective === MATCH_OBJECTIVES.FIXED_ROUNDS && match.currentRound >= match.maxRounds) {
           // Esta condição já foi tratada na função checkWinConditions
           // Mas mantemos como fallback de segurança
-          console.log(`Partida ${matchId} atingiu o limite máximo de rodadas (${gameConfig.maxRounds}). Encerrando...`);
+          console.log(`Partida ${matchId} atingiu o limite máximo de rodadas (${match.maxRounds}). Encerrando...`);
+          
+          match.status = 'finished';
           
           // Notificar jogadores que a partida terminou
           match.players.forEach(player => {
             player.ws.send(JSON.stringify({
               type: 'matchEnded',
-              reason: `Partida finalizada após ${gameConfig.maxRounds} rodadas`,
+              reason: `Partida finalizada após ${match.maxRounds} rodadas`,
               finalCredits: player.credits,
               isWinner: false,
               winners: []
@@ -557,37 +614,47 @@ wss.on('connection', (ws) => {
       return;
     }
     
-    // Remover da partida ativa se estiver em uma
+    // Remover da partida ativa ou disponível se estiver em uma
     const matchId = playerToMatch.get(player.name);
     if (matchId) {
-      const match = activeMatches.get(matchId);
+      let match = activeMatches.get(matchId) || availableMatches.get(matchId);
       if (match) {
-        const playerIndex = match.players.findIndex(p => p.name === player.name);
-        if (playerIndex !== -1) {
-          match.players.splice(playerIndex, 1);
-          console.log(`${player.name} removido da partida ${matchId}`);
-          
-          // Se a partida ficar vazia, removê-la
-          if (match.players.length === 0) {
-            activeMatches.delete(matchId);
-            console.log(`Partida ${matchId} removida (sem jogadores)`);
-          } else {
-            // Notificar outros jogadores da partida sobre a desconexão
-            match.players.forEach(p => {
-              p.ws.send(JSON.stringify({
-                type: 'playerDisconnected',
-                playerName: player.name,
-                remainingPlayers: match.players.length
-              }));
-            });
+        console.log(`${player.name} desconectou da partida ${matchId}, encerrando partida...`);
+        
+        // Notificar outros jogadores que a partida foi encerrada devido à desconexão
+        match.players.forEach(p => {
+          if (p.name !== player.name) {
+            p.ws.send(JSON.stringify({
+              type: 'matchEnded',
+              reason: `Partida encerrada: ${player.name} desconectou`
+            }));
           }
+        });
+        
+        // Gerar relatório final se a partida estava ativa
+        if (match.status === 'active') {
+          match.gameReport.totalRounds = match.currentRound;
+          generateReport(match);
         }
+        
+        // Remover partida completamente
+        activeMatches.delete(matchId);
+        availableMatches.delete(matchId);
+        
+        // Limpar mapeamentos de todos os jogadores da partida
+        match.players.forEach(p => {
+          playerToMatch.delete(p.name);
+          // Mover outros jogadores de volta para a fila de espera (exceto o que desconectou)
+          if (p.name !== player.name && !waitingPlayers.find(wp => wp.name === p.name)) {
+            waitingPlayers.push(p);
+            console.log(`${p.name} movido de volta para a fila de espera`);
+          }
+        });
+        
+        console.log(`Partida ${matchId} encerrada devido à desconexão de ${player.name}`);
       }
       playerToMatch.delete(player.name);
     }
-    
-    // Nota: Mantemos os dados do jogador no gameReport para fins históricos
-    // mesmo após a desconexão, para que o relatório contenha o histórico completo do jogo
   });
 });
 
@@ -604,12 +671,18 @@ app.get('/api/moderator/stats', (req, res) => {
   const stats = {
     totalWaitingPlayers: waitingPlayers.length,
     activeMatches: activeMatches.size,
+    availableMatches: availableMatches.size,
     totalPlayersInMatches: Array.from(activeMatches.values()).reduce((total, match) => total + match.players.length, 0),
-    gameConfig: gameConfig,
+    totalPlayersInAvailableMatches: Array.from(availableMatches.values()).reduce((total, match) => total + match.players.length, 0),
     matches: Array.from(activeMatches.values()).map(match => ({
       matchId: match.matchId,
       currentRound: match.currentRound,
       playersCount: match.players.length,
+      maxPlayers: match.maxPlayers,
+      status: match.status,
+      matchObjective: match.matchObjective,
+      creditsQuota: match.creditsQuota,
+      maxRounds: match.maxRounds,
       players: match.players.map(p => ({
         name: p.name,
         credits: p.credits,
@@ -617,6 +690,21 @@ app.get('/api/moderator/stats', (req, res) => {
         hasChosen: p.hasChosen
       })),
       missions: match.missions
+    })),
+    availableMatches: Array.from(availableMatches.values()).map(match => ({
+      matchId: match.matchId,
+      playersCount: match.players.length,
+      maxPlayers: match.maxPlayers,
+      status: match.status,
+      matchObjective: match.matchObjective,
+      creditsQuota: match.creditsQuota,
+      maxRounds: match.maxRounds,
+      createdAt: match.createdAt,
+      players: match.players.map(p => ({
+        name: p.name,
+        credits: p.credits,
+        skillLevel: p.skillLevel
+      }))
     }))
   };
   
@@ -656,10 +744,101 @@ app.post('/api/moderator/config', (req, res) => {
   res.json({ success: true, config: gameConfig });
 });
 
+// Criar uma nova partida
+app.post('/api/moderator/match/create', (req, res) => {
+  const { maxPlayers, matchObjective, creditsQuota, maxRounds } = req.body;
+  
+  // Validar parâmetros
+  if (!maxPlayers || maxPlayers < 2 || maxPlayers > 10) {
+    return res.status(400).json({ error: 'maxPlayers deve estar entre 2 e 10' });
+  }
+  
+  if (!matchObjective || !Object.values(MATCH_OBJECTIVES).includes(matchObjective)) {
+    return res.status(400).json({ error: 'matchObjective inválido' });
+  }
+  
+  if (!creditsQuota || creditsQuota <= 0) {
+    return res.status(400).json({ error: 'creditsQuota deve ser maior que 0' });
+  }
+  
+  if (!maxRounds || maxRounds <= 0) {
+    return res.status(400).json({ error: 'maxRounds deve ser maior que 0' });
+  }
+  
+  const matchConfig = {
+    maxPlayers,
+    matchObjective,
+    creditsQuota,
+    maxRounds
+  };
+  
+  const newMatch = createMatch(matchConfig);
+  availableMatches.set(newMatch.matchId, newMatch);
+  
+  console.log(`Nova partida criada pelo moderador: ${newMatch.matchId}`);
+  console.log(`Configuração: ${maxPlayers} jogadores, ${matchObjective}, ${creditsQuota} créditos, ${maxRounds} rodadas`);
+  
+  // Tentar adicionar jogadores da fila de espera automaticamente
+  const playersToAdd = [];
+  while (waitingPlayers.length > 0 && playersToAdd.length < newMatch.maxPlayers) {
+    const player = waitingPlayers.shift();
+    playersToAdd.push(player);
+  }
+  
+  // Adicionar jogadores à nova partida
+  playersToAdd.forEach(player => {
+    addPlayerToMatch(player, newMatch);
+    console.log(`${player.name} automaticamente adicionado à nova partida ${newMatch.matchId}`);
+    
+    // Notificar o jogador que entrou na partida
+    player.ws.send(JSON.stringify({
+      type: 'matchJoined',
+      matchId: newMatch.matchId,
+      currentPlayers: newMatch.players.length,
+      maxPlayers: newMatch.maxPlayers,
+      players: newMatch.players.map(p => ({ name: p.name, skillLevel: p.skillLevel, credits: p.credits }))
+    }));
+  });
+  
+  // Se a partida estiver cheia, iniciá-la imediatamente
+  if (newMatch.players.length >= newMatch.maxPlayers) {
+    newMatch.status = 'active';
+    availableMatches.delete(newMatch.matchId);
+    activeMatches.set(newMatch.matchId, newMatch);
+    
+    console.log(`Partida ${newMatch.matchId} está cheia, iniciando automaticamente...`);
+    
+    // Notificar todos os jogadores que a partida começou
+    newMatch.players.forEach(p => {
+      p.ws.send(JSON.stringify({ 
+        type: 'matchStarted', 
+        matchId: newMatch.matchId
+      }));
+    });
+    
+    // Iniciar a partida
+    startMatch(newMatch);
+  }
+  
+  res.json({ 
+    success: true, 
+    match: {
+      matchId: newMatch.matchId,
+      maxPlayers: newMatch.maxPlayers,
+      matchObjective: newMatch.matchObjective,
+      creditsQuota: newMatch.creditsQuota,
+      maxRounds: newMatch.maxRounds,
+      status: newMatch.status,
+      createdAt: newMatch.createdAt,
+      currentPlayers: newMatch.players.length
+    }
+  });
+});
+
 // Encerrar uma partida específica
 app.post('/api/moderator/match/:matchId/end', (req, res) => {
   const { matchId } = req.params;
-  const match = activeMatches.get(matchId);
+  let match = activeMatches.get(matchId) || availableMatches.get(matchId);
   
   if (!match) {
     return res.status(404).json({ error: 'Partida não encontrada' });
@@ -673,18 +852,55 @@ app.post('/api/moderator/match/:matchId/end', (req, res) => {
     }));
   });
   
-  // Gerar relatório final
-  match.gameReport.totalRounds = match.currentRound;
-  generateReport(match);
+  // Gerar relatório final se a partida estava ativa
+  if (match.status === 'active') {
+    match.gameReport.totalRounds = match.currentRound;
+    generateReport(match);
+  }
   
   // Remover partida
   activeMatches.delete(matchId);
+  availableMatches.delete(matchId);
   match.players.forEach(player => {
     playerToMatch.delete(player.name);
+    // Mover jogadores de volta para a fila de espera
+    if (!waitingPlayers.find(p => p.name === player.name)) {
+      waitingPlayers.push(player);
+    }
   });
   
   console.log(`Partida ${matchId} encerrada pelo moderador`);
   res.json({ success: true, message: 'Partida encerrada com sucesso' });
+});
+
+// Deletar uma partida disponível (antes de iniciar)
+app.delete('/api/moderator/match/:matchId', (req, res) => {
+  const { matchId } = req.params;
+  const match = availableMatches.get(matchId);
+  
+  if (!match) {
+    return res.status(404).json({ error: 'Partida disponível não encontrada' });
+  }
+  
+  // Notificar jogadores que a partida foi cancelada
+  match.players.forEach(player => {
+    player.ws.send(JSON.stringify({
+      type: 'matchCancelled',
+      reason: 'Partida cancelada pelo moderador'
+    }));
+    
+    // Mover jogadores de volta para a fila de espera
+    playerToMatch.delete(player.name);
+    if (!waitingPlayers.find(p => p.name === player.name)) {
+      waitingPlayers.push(player);
+    }
+  });
+  
+  // Remover partida
+  availableMatches.delete(matchId);
+  
+  console.log(`Partida disponível ${matchId} cancelada pelo moderador`);
+  res.json({ success: true, message: 'Partida cancelada com sucesso' });
 });
 
 // Kickar um jogador de uma partida
@@ -696,7 +912,7 @@ app.post('/api/moderator/player/:playerName/kick', (req, res) => {
     return res.status(404).json({ error: 'Jogador não encontrado em nenhuma partida' });
   }
   
-  const match = activeMatches.get(matchId);
+  let match = activeMatches.get(matchId) || availableMatches.get(matchId);
   if (!match) {
     return res.status(404).json({ error: 'Partida não encontrada' });
   }
@@ -718,6 +934,11 @@ app.post('/api/moderator/player/:playerName/kick', (req, res) => {
   match.players.splice(playerIndex, 1);
   playerToMatch.delete(playerName);
   
+  // Mover jogador de volta para a fila de espera
+  if (!waitingPlayers.find(p => p.name === playerName)) {
+    waitingPlayers.push(player);
+  }
+  
   // Notificar outros jogadores da partida
   match.players.forEach(p => {
     p.ws.send(JSON.stringify({
@@ -730,6 +951,7 @@ app.post('/api/moderator/player/:playerName/kick', (req, res) => {
   // Se a partida ficar vazia, removê-la
   if (match.players.length === 0) {
     activeMatches.delete(matchId);
+    availableMatches.delete(matchId);
     console.log(`Partida ${matchId} removida (sem jogadores após kick)`);
   }
   

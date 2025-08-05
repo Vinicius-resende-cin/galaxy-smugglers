@@ -23,29 +23,53 @@ function conectar() {
             updateCreditsDisplay(data.data.credits);
         }
 
-        // Quando o jogador está aguardando outros jogadores
-        if (data.type === 'waitingForPlayers') {
-            updateGameStatus('Procurando outros jogadores...', 'status-waiting');
-            document.getElementById('roundOutcome').innerText = 'Aguardando...';
-            document.getElementById('roundCredits').innerText = 'Procurando partida...';
+        // Quando o jogador está aguardando na fila
+        if (data.type === 'waitingForMatch') {
+            updateGameStatus(data.message, 'status-waiting');
+            document.getElementById('roundOutcome').innerText = 'Na fila de espera';
+            document.getElementById('roundCredits').innerText = `Posição na fila: ${data.queuePosition}`;
             updateCreditChange('Aguardando partida...', 'neutral');
             disableButtons();
         }
 
-        // Quando uma partida é encontrada
-        if (data.type === 'matchFound') {
-            updateGameStatus(`Partida encontrada! ${data.players.length}/3 jogadores`, 'status-in-game');
+        // Quando o jogador entra em uma partida
+        if (data.type === 'matchJoined') {
+            updateGameStatus(`Entrou na partida automaticamente! (${data.currentPlayers}/${data.maxPlayers} jogadores)`, 'status-match-found');
+            document.getElementById('roundOutcome').innerText = `Aguardando outros jogadores`;
+            document.getElementById('roundCredits').innerText = `${data.currentPlayers}/${data.maxPlayers} jogadores na partida`;
+            updateCreditChange('Partida encontrada', 'neutral');
+        }
+
+        // Quando outro jogador entra na partida
+        if (data.type === 'playerJoined') {
+            updateGameStatus(`${data.playerName} entrou na partida! (${data.currentPlayers}/${data.maxPlayers} jogadores)`, 'status-match-found');
+            document.getElementById('roundCredits').innerText = `${data.currentPlayers}/${data.maxPlayers} jogadores na partida`;
+        }
+
+        // Quando a partida inicia
+        if (data.type === 'matchStarted') {
+            updateGameStatus('Partida iniciada!', 'status-in-game');
             document.getElementById('roundOutcome').innerText = `Partida iniciada`;
             document.getElementById('roundCredits').innerText = `Aguardando missões...`;
             updateCreditChange('Partida iniciada', 'neutral');
             enableButtons();
         }
 
+        // Quando uma partida é cancelada
+        if (data.type === 'matchCancelled') {
+            updateGameStatus('Partida cancelada pelo moderador', 'status-error');
+            document.getElementById('roundOutcome').innerText = 'Partida cancelada';
+            document.getElementById('roundCredits').innerText = 'Buscando nova partida...';
+            updateCreditChange('Partida cancelada', 'neutral');
+        }
+
         // Quando um jogador se desconecta
         if (data.type === 'playerDisconnected') {
-            updateGameStatus(`Jogador desconectou (${data.remainingPlayers} restantes)`, 'status-error');
-            document.getElementById('roundOutcome').innerText = `Jogador desconectou`;
-            document.getElementById('roundCredits').innerText = `${data.remainingPlayers} jogadores restantes`;
+            updateGameStatus(`Jogador desconectou - Partida encerrada`, 'status-error');
+            document.getElementById('roundOutcome').innerText = `Partida encerrada`;
+            document.getElementById('roundCredits').innerText = `Desconexão durante partida`;
+            updateCreditChange('Partida encerrada', 'neutral');
+            disableButtons();
         }
 
         // Quando o servidor envia as missões

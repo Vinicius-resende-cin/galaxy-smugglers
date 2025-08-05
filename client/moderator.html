@@ -205,49 +205,41 @@
                 <div class="stat-label">Partidas Ativas</div>
             </div>
             <div class="stat-card">
+                <div class="stat-value" id="availableMatches">0</div>
+                <div class="stat-label">Partidas Disponíveis</div>
+            </div>
+            <div class="stat-card">
                 <div class="stat-value" id="totalPlayers">0</div>
                 <div class="stat-label">Total de Jogadores</div>
             </div>
-            <div class="stat-card">
-                <div class="stat-value" id="currentMatchSize">3</div>
-                <div class="stat-label">Jogadores por Partida</div>
-            </div>
         </div>
         
-        <!-- Configurações do Jogo -->
+        <!-- Criar Nova Partida -->
         <div class="section">
-            <h2>⚙️ Configurações do Jogo</h2>
-            <div id="configMessage"></div>
-            <form class="config-form" id="configForm">
+            <h2>➕ Criar Nova Partida</h2>
+            <div id="createMatchMessage"></div>
+            <form class="config-form" id="createMatchForm">
                 <div class="form-group">
-                    <label for="matchSize">Jogadores por Partida:</label>
-                    <input type="number" id="matchSize" min="2" max="10" value="3">
+                    <label for="newMaxPlayers">Máximo de Jogadores:</label>
+                    <input type="number" id="newMaxPlayers" min="2" max="10" value="3">
                 </div>
                 <div class="form-group">
-                    <label for="initialCredits">Créditos Iniciais:</label>
-                    <input type="number" id="initialCredits" min="50" max="1000" value="100">
-                </div>
-                <div class="form-group">
-                    <label for="skillLevels">Níveis de Habilidade (separados por vírgula):</label>
-                    <input type="text" id="skillLevels" value="3,5">
-                </div>
-                <div class="form-group">
-                    <label for="maxRounds">Máximo de Rodadas (modo rodadas fixas):</label>
-                    <input type="number" id="maxRounds" min="5" max="50" value="10">
-                </div>
-                <div class="form-group">
-                    <label for="matchObjective">Objetivo da Partida:</label>
-                    <select id="matchObjective" style="padding: 10px; border: 1px solid #4fc3f7; border-radius: 5px; background: #1a1a2e; color: #eee;">
-                        <option value="fixedRounds">Rodadas Fixas (todos que atingem a cota vencem)</option>
-                        <option value="infiniteRounds">Primeiro a Atingir (vence quem chegar primeiro na cota)</option>
+                    <label for="newMatchObjective">Objetivo da Partida:</label>
+                    <select id="newMatchObjective" style="padding: 10px; border: 1px solid #4fc3f7; border-radius: 5px; background: #1a1a2e; color: #eee;">
+                        <option value="fixedRounds">Rodadas Fixas</option>
+                        <option value="infiniteRounds">Primeiro a Atingir</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="creditsQuota">Cota de Créditos para Vencer:</label>
-                    <input type="number" id="creditsQuota" min="200" max="2000" step="50" value="500">
+                    <label for="newCreditsQuota">Cota de Créditos:</label>
+                    <input type="number" id="newCreditsQuota" min="200" max="2000" step="50" value="500">
+                </div>
+                <div class="form-group">
+                    <label for="newMaxRounds">Máximo de Rodadas:</label>
+                    <input type="number" id="newMaxRounds" min="5" max="50" value="10">
                 </div>
             </form>
-            <button class="btn btn-primary" onclick="updateConfig()">Atualizar Configurações</button>
+            <button class="btn btn-primary" onclick="createMatch()">Criar Partida</button>
         </div>
         
         <!-- Partidas Ativas -->
@@ -255,6 +247,14 @@
             <h2>🎮 Partidas Ativas</h2>
             <div id="matchesContainer" class="matches-grid">
                 <!-- Partidas serão carregadas aqui -->
+            </div>
+        </div>
+        
+        <!-- Partidas Disponíveis -->
+        <div class="section">
+            <h2>⏳ Partidas Disponíveis</h2>
+            <div id="availableMatchesContainer" class="matches-grid">
+                <!-- Partidas disponíveis serão carregadas aqui -->
             </div>
         </div>
     </div>

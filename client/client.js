@@ -75,9 +75,9 @@ function conectar() {
             document.getElementById('roundCredits').innerText = success ? 'Parabéns pela vitória!' : 'Tente novamente na próxima';
             
             // Calcular mudança nos créditos baseado no sucesso
-            const previousCredits = parseInt(document.getElementById('playerCredits').innerText.match(/\d+/)[0]);
+            const previousCredits = parseFloat(document.getElementById('playerCredits').innerText.match(/[\d.]+/)[0]);
             const creditChange = data.credits - previousCredits;
-            const changeText = creditChange >= 0 ? `+${creditChange}` : `${creditChange}`;
+            const changeText = creditChange >= 0 ? `+${creditChange.toFixed(2)}` : `${creditChange.toFixed(2)}`;
             const changeType = creditChange > 0 ? 'positive' : creditChange < 0 ? 'negative' : 'neutral';
             updateCreditChange(`${changeText} créditos`, changeType);
             
@@ -146,7 +146,8 @@ function updateGameStatus(message, statusClass) {
 
 // Atualizar display de créditos
 function updateCreditsDisplay(credits) {
-    document.getElementById('playerCredits').innerHTML = `💰 ${credits} Créditos`;
+    const formattedCredits = Number(credits).toFixed(2);
+    document.getElementById('playerCredits').innerHTML = `💰 ${formattedCredits} Créditos`;
 }
 
 // Atualizar informações da rodada
@@ -201,13 +202,13 @@ function updateMissionInfo(mission, missionType) {
     if (missionType === 'individual') {
         document.getElementById('missionIndividualName').innerText = mission.name;
         document.getElementById('missionIndividualDifficulty').innerHTML = getDifficultyBadge(mission.difficulty);
-        document.getElementById('missionIndividualReward').innerText = `${mission.reward} créditos`;
-        document.getElementById('missionIndividualFailureCost').innerText = `${mission.failureCost} créditos`;
+        document.getElementById('missionIndividualReward').innerText = `${Number(mission.reward).toFixed(2)} créditos`;
+        document.getElementById('missionIndividualFailureCost').innerText = `${Number(mission.failureCost).toFixed(2)} créditos`;
     } else if (missionType === 'collective') {
         document.getElementById('missionCollectiveName').innerText = mission.name;
         document.getElementById('missionCollectiveDifficulty').innerHTML = getDifficultyBadge(mission.difficulty);
-        document.getElementById('missionCollectiveReward').innerText = `${mission.reward} créditos`;
-        document.getElementById('missionCollectiveFailureCost').innerText = `${mission.failureCost} créditos`;
+        document.getElementById('missionCollectiveReward').innerText = `${Number(mission.reward).toFixed(2)} créditos`;
+        document.getElementById('missionCollectiveFailureCost').innerText = `${Number(mission.failureCost).toFixed(2)} créditos`;
     }
 }
 

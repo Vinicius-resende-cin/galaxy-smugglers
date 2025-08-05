@@ -2,6 +2,9 @@
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
+const fs = require('fs');
+const path = require('path');
+const { v4: uuidv4 } = require('uuid');
 const { INITIAL_CREDITS, FIXED_SKILL_LEVELS, missionsData } = require('./gameConfig');
 
 const app = express();
@@ -14,18 +17,33 @@ let players = []; // Armazenar jogadores conectados
 let currentRound = 1; // Controla o número da rodada
 let missions = []; // Armazenar missões
 let playersChoices = []; // Armazenar as escolhas dos jogadores para as missões
+let gameId = uuidv4(); // ID único para esta partida
+let gameReport = {
+  gameId: gameId,
+  totalRounds: 0,
+  players: {}
+}; // Armazenar dados para relatório
 
 // Função para criar jogadores com base nas variáveis fixas
 function createPlayer(name) {
   // Atribui habilidade fixa de 3 ou 5 de maneira aleatória
   const skillLevel = FIXED_SKILL_LEVELS[Math.floor(Math.random() * FIXED_SKILL_LEVELS.length)];
   
-  return {
+  const player = {
     name,
     credits: INITIAL_CREDITS, // Créditos iniciais
     skillLevel, // Habilidade fixa em 3 ou 5
     hasChosen: false // Marca se o jogador já fez uma escolha
   };
+
+  // Inicializar dados do jogador no relatório
+  gameReport.players[name] = {
+    skillLevel: skillLevel,
+    missionHistory: [],
+    creditsHistory: [INITIAL_CREDITS]
+  };
+
+  return player;
 }
 
 // Função para criar uma missão com base nas variáveis fixas
@@ -55,6 +73,39 @@ function generateMissions() {
 // Função para rolar um dado de 6 lados
 function rollDice() {
   return Math.floor(Math.random() * 6) + 1;
+}
+
+// Função para gerar e salvar o relatório em JSON
+function generateReport() {
+  const reportData = {
+    gameId: gameReport.gameId,
+    totalRounds: gameReport.totalRounds,
+    players: gameReport.players,
+    generatedAt: new Date().toISOString(),
+    lastUpdated: new Date().toISOString()
+  };
+
+  const reportsDir = path.join(__dirname, '..', 'reports');
+  const filename = `${gameId}.json`;
+  const filepath = path.join(reportsDir, filename);
+
+  // Garante que o diretório reports existe
+  if (!fs.existsSync(reportsDir)) {
+    fs.mkdirSync(reportsDir, { recursive: true });
+  }
+
+  try {
+    // Se o arquivo já existe, mantém a data de criação original
+    if (fs.existsSync(filepath)) {
+      const existingData = JSON.parse(fs.readFileSync(filepath, 'utf8'));
+      reportData.generatedAt = existingData.generatedAt || reportData.generatedAt;
+    }
+    
+    fs.writeFileSync(filepath, JSON.stringify(reportData, null, 2));
+    console.log(`Relatório atualizado: ${filepath}`);
+  } catch (error) {
+    console.error('Erro ao gerar relatório:', error);
+  }
 }
 
 // Função para embaralhar o array de jogadores (Fisher-Yates Shuffle)
@@ -100,6 +151,16 @@ function resolveIndividualMission(player, mission) {
     player.credits -= mission.failureCost;
   }
 
+  // Adicionar ao histórico do relatório
+  gameReport.players[player.name].missionHistory.push({
+    round: currentRound,
+    missionType: 'individual',
+    missionName: mission.name,
+    result: success ? 'success' : 'failure',
+    roll: roll,
+    creditsChange: success ? mission.reward : -mission.failureCost
+  });
+
   return { success, credits: player.credits };
 }
 
@@ -117,6 +178,19 @@ function resolveCollectiveMission(groups, mission) {
     } else {
       group.forEach(player => player.credits -= mission.failureCost);
     }
+
+    // Adicionar ao histórico do relatório para cada jogador do grupo
+    group.forEach(player => {
+      gameReport.players[player.name].missionHistory.push({
+        round: currentRound,
+        missionType: 'collective',
+        missionName: mission.name,
+        result: success ? 'success' : 'failure',
+        roll: roll,
+        groupMembers: group.map(p => p.name),
+        creditsChange: success ? mission.reward : -mission.failureCost
+      });
+    });
 
     groupResults.push({
       group,
@@ -228,7 +302,13 @@ wss.on('connection', (ws) => {
         console.log(`Créditos após a rodada:`);
         players.forEach(player => {
           console.log(`${player.name}: ${player.credits} créditos`);
+          // Adicionar créditos atuais ao histórico
+          gameReport.players[player.name].creditsHistory.push(player.credits);
         });
+
+        // Atualizar total de rodadas e gerar relatório
+        gameReport.totalRounds = currentRound;
+        generateReport();
 
         // Limpar as escolhas para a próxima rodada
         playersChoices = [];
@@ -243,6 +323,8 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     console.log(`Jogador ${player.name} desconectado`);
     players = players.filter(p => p !== player);
+    // Nota: Mantemos os dados do jogador no gameReport para fins históricos
+    // mesmo após a desconexão, para que o relatório contenha o histórico completo do jogo
   });
 });
 
@@ -252,5 +334,6 @@ app.use(express.static('client'));
 // Inicializar o servidor na porta 3000
 server.listen(3000, () => {
   console.log('Servidor WebSocket rodando na porta 3000');
+  console.log(`ID do jogo: ${gameId}`);
   generateMissions(); // Gerar missões no início do jogo
 });

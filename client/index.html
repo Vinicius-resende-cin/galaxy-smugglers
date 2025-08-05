@@ -4,55 +4,518 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Galaxy Smugglers</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+            color: #eee;
+            min-height: 100vh;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 2fr 1fr;
+            grid-template-rows: auto auto 1fr auto;
+            grid-template-areas: 
+                "header header header"
+                "player missions status"
+                "player missions status"
+                "actions actions actions";
+            gap: 15px;
+            min-height: 95vh;
+        }
+
+        .header {
+            grid-area: header;
+            text-align: center;
+            background: linear-gradient(45deg, #4fc3f7, #29b6f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-size: 2.5em;
+            font-weight: bold;
+            margin-bottom: 10px;
+            text-shadow: 0 0 30px rgba(79, 195, 247, 0.5);
+        }
+
+        .card {
+            background: rgba(22, 33, 62, 0.9);
+            border-radius: 12px;
+            padding: 18px;
+            border: 1px solid rgba(79, 195, 247, 0.3);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: rgba(79, 195, 247, 0.6);
+            box-shadow: 0 12px 40px rgba(79, 195, 247, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .card h2 {
+            color: #4fc3f7;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card h3 {
+            color: #29b6f6;
+            margin-bottom: 12px;
+            font-size: 1.1em;
+            border-bottom: 2px solid rgba(79, 195, 247, 0.3);
+            padding-bottom: 4px;
+        }
+
+        .player-info {
+            grid-area: player;
+        }
+
+        .player-stat {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(79, 195, 247, 0.2);
+            margin-bottom: 8px;
+        }
+
+        .player-stat:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+
+        .stat-label {
+            color: #ccc;
+            font-weight: 500;
+        }
+
+        .stat-value {
+            color: #4fc3f7;
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+
+        .missions-area {
+            grid-area: missions;
+        }
+
+        .mission-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .mission-card {
+            background: rgba(15, 20, 25, 0.8);
+            border-radius: 10px;
+            padding: 15px;
+            border: 1px solid rgba(79, 195, 247, 0.3);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .mission-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #4fc3f7, #29b6f6);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .mission-card:hover {
+            border-color: rgba(79, 195, 247, 0.6);
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(79, 195, 247, 0.3);
+        }
+
+        .mission-card:hover::before {
+            opacity: 1;
+        }
+
+        .mission-detail {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 6px;
+        }
+
+        .mission-detail:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+
+        .mission-label {
+            color: #aaa;
+            font-size: 0.85em;
+        }
+
+        .mission-value {
+            color: #4fc3f7;
+            font-weight: bold;
+        }
+
+        .mission-name {
+            color: #29b6f6;
+            font-weight: bold;
+            font-size: 1em;
+            text-align: center;
+            margin-bottom: 12px;
+            padding: 8px;
+            background: rgba(79, 195, 247, 0.1);
+            border-radius: 6px;
+        }
+
+        .status-area {
+            grid-area: status;
+        }
+
+        .status-indicator {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            text-align: center;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+
+        .round-display {
+            background: rgba(79, 195, 247, 0.1);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 12px;
+            border: 1px solid rgba(79, 195, 247, 0.3);
+        }
+
+        .round-info {
+            text-align: center;
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #4fc3f7;
+            margin-top: 8px;
+        }
+
+        .status-waiting {
+            background: linear-gradient(45deg, #ff9800, #f57c00);
+            color: white;
+            animation: pulse 2s infinite;
+        }
+
+        .status-match-found {
+            background: linear-gradient(45deg, #4caf50, #388e3c);
+            color: white;
+        }
+
+        .status-in-game {
+            background: linear-gradient(45deg, #4fc3f7, #29b6f6);
+            color: white;
+        }
+
+        .status-error {
+            background: linear-gradient(45deg, #f44336, #d32f2f);
+            color: white;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .actions-area {
+            grid-area: actions;
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .mission-button {
+            flex: 1;
+            max-width: 280px;
+            padding: 15px 25px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .mission-button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .mission-button:hover::before {
+            left: 100%;
+        }
+
+        .individual-btn {
+            background: linear-gradient(45deg, #ff6b35, #f7931e);
+            color: white;
+            border: 2px solid transparent;
+        }
+
+        .individual-btn:hover {
+            background: linear-gradient(45deg, #ff8a65, #ffb74d);
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(255, 107, 53, 0.4);
+        }
+
+        .collective-btn {
+            background: linear-gradient(45deg, #9c27b0, #673ab7);
+            color: white;
+            border: 2px solid transparent;
+        }
+
+        .collective-btn:hover {
+            background: linear-gradient(45deg, #ab47bc, #7986cb);
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(156, 39, 176, 0.4);
+        }
+
+        .mission-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        .credits-display {
+            font-size: 1.6em;
+            color: #4fc3f7;
+            font-weight: bold;
+            text-align: center;
+            padding: 12px;
+            background: rgba(79, 195, 247, 0.1);
+            border-radius: 8px;
+            margin-top: 12px;
+            border: 2px solid rgba(79, 195, 247, 0.3);
+        }
+
+        .credit-change {
+            font-size: 1.1em;
+            font-weight: bold;
+            text-align: center;
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-top: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .credit-change.positive {
+            color: #4caf50;
+            background: rgba(76, 175, 80, 0.1);
+            border-color: rgba(76, 175, 80, 0.3);
+        }
+
+        .credit-change.negative {
+            color: #f44336;
+            background: rgba(244, 67, 54, 0.1);
+            border-color: rgba(244, 67, 54, 0.3);
+        }
+
+        .credit-change.neutral {
+            color: #aaa;
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(79, 195, 247, 0.3);
+            border-radius: 50%;
+            border-top-color: #4fc3f7;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .difficulty-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: bold;
+            text-align: center;
+            min-width: 60px;
+        }
+
+        .difficulty-easy { background: #4caf50; color: white; }
+        .difficulty-medium { background: #ff9800; color: white; }
+        .difficulty-hard { background: #f44336; color: white; }
+
+        @media (max-width: 1024px) {
+            .container {
+                grid-template-columns: 1fr;
+                grid-template-areas: 
+                    "header"
+                    "player"
+                    "missions"
+                    "status"
+                    "actions";
+            }
+            
+            .mission-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .actions-area {
+                flex-direction: column;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                font-size: 2em;
+            }
+            
+            .mission-button {
+                padding: 15px 20px;
+                font-size: 1em;
+            }
+        }
+    </style>
     <script src="client.js"></script>
 </head>
 <body>
-    <h1>Galaxy Smugglers</h1>
-
-    <!-- Informações do Jogador -->
-    <div id="playerInfo">
-        <h2>Informações do Jogador</h2>
-        <p id="playerName">Nome: Aguardando...</p>
-        <p id="playerSkill">Habilidade: Aguardando...</p>
-    </div>
-
-    <!-- Informações das Missões -->
-    <div id="currentMissions">
-        <h2>Missões Atuais</h2>
-
-        <!-- Missão Individual -->
-        <div id="individualMission">
-            <h3>Missão Individual</h3>
-            <p id="missionIndividualName">Nome da Missão: Aguardando...</p>  <!-- Nome da missão -->
-            <p id="missionIndividualType">Tipo: Aguardando...</p>
-            <p id="missionIndividualDifficulty">Dificuldade: Aguardando...</p>
-            <p id="missionIndividualReward">Recompensa: Aguardando...</p>
-            <p id="missionIndividualFailureCost">Custo de fracasso: Aguardando...</p>
+    <div class="container">
+        <div class="header">
+            🚀 Galaxy Smugglers
         </div>
 
-        <!-- Missão Coletiva -->
-        <div id="collectiveMission">
-            <h3>Missão Coletiva</h3>
-            <p id="missionCollectiveName">Nome da Missão: Aguardando...</p>  <!-- Nome da missão -->
-            <p id="missionCollectiveType">Tipo: Aguardando...</p>
-            <p id="missionCollectiveDifficulty">Dificuldade: Aguardando...</p>
-            <p id="missionCollectiveReward">Recompensa: Aguardando...</p>
-            <p id="missionCollectiveFailureCost">Custo de fracasso: Aguardando...</p>
+        <!-- Informações do Jogador -->
+        <div class="card player-info">
+            <h2>👤 Informações do Jogador</h2>
+            <div class="player-stat">
+                <span class="stat-label">Nome:</span>
+                <span class="stat-value" id="playerName">Aguardando...</span>
+            </div>
+            <div class="player-stat">
+                <span class="stat-label">Habilidade:</span>
+                <span class="stat-value" id="playerSkill">Aguardando...</span>
+            </div>
+            <div class="credits-display" id="playerCredits">
+                <div class="loading"></div> Créditos
+            </div>
+            <div class="credit-change" id="creditChange">
+                Aguardando partida...
+            </div>
+        </div>
+
+        <!-- Informações das Missões -->
+        <div class="card missions-area">
+            <h2>🎯 Missões Disponíveis</h2>
+            <div class="mission-grid">
+                <!-- Missão Individual -->
+                <div class="mission-card" id="individualMission">
+                    <h3>⚡ Missão Individual</h3>
+                    <div class="mission-name" id="missionIndividualName">Aguardando missão...</div>
+                    <div class="mission-detail">
+                        <span class="mission-label">Dificuldade:</span>
+                        <span class="mission-value" id="missionIndividualDifficulty">-</span>
+                    </div>
+                    <div class="mission-detail">
+                        <span class="mission-label">Recompensa:</span>
+                        <span class="mission-value" id="missionIndividualReward">- créditos</span>
+                    </div>
+                    <div class="mission-detail">
+                        <span class="mission-label">Fracasso:</span>
+                        <span class="mission-value" id="missionIndividualFailureCost">- créditos</span>
+                    </div>
+                </div>
+
+                <!-- Missão Coletiva -->
+                <div class="mission-card" id="collectiveMission">
+                    <h3>👥 Missão Coletiva</h3>
+                    <div class="mission-name" id="missionCollectiveName">Aguardando missão...</div>
+                    <div class="mission-detail">
+                        <span class="mission-label">Dificuldade:</span>
+                        <span class="mission-value" id="missionCollectiveDifficulty">-</span>
+                    </div>
+                    <div class="mission-detail">
+                        <span class="mission-label">Recompensa:</span>
+                        <span class="mission-value" id="missionCollectiveReward">- créditos</span>
+                    </div>
+                    <div class="mission-detail">
+                        <span class="mission-label">Fracasso:</span>
+                        <span class="mission-value" id="missionCollectiveFailureCost">- créditos</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status do Jogo -->
+        <div class="card status-area">
+            <h2>📊 Status</h2>
+            <div class="status-indicator status-waiting" id="gameStatus">
+                <div class="loading"></div>
+                Conectando...
+            </div>
+            <div class="round-display" id="roundDisplay">
+                <h3>🎯 Rodada</h3>
+                <div class="round-info">
+                    <span id="currentRound">-</span> / <span id="maxRounds">-</span>
+                </div>
+            </div>
+            <div id="roundResult">
+                <h3>📈 Resultado da Rodada</h3>
+                <div class="mission-detail">
+                    <span class="mission-label">Resultado:</span>
+                    <span class="mission-value" id="roundOutcome">Aguardando...</span>
+                </div>
+                <div class="mission-detail">
+                    <span class="mission-label">Detalhes:</span>
+                    <span class="mission-value" id="roundCredits">Aguardando...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Botões para escolher missões -->
+        <div class="actions-area">
+            <button class="mission-button individual-btn" onclick="chooseMission('individual')" id="individualBtn" disabled>
+                ⚡ Escolher Missão Individual
+            </button>
+            <button class="mission-button collective-btn" onclick="chooseMission('collective')" id="collectiveBtn" disabled>
+                👥 Escolher Missão Coletiva
+            </button>
         </div>
     </div>
-
-    <!-- Botões para escolher missões -->
-    <div>
-        <button onclick="chooseMission('individual')">Escolher Missão Individual</button>
-        <button onclick="chooseMission('collective')">Escolher Missão Coletiva</button>
-    </div>
-
-    <!-- Resultado da Rodada -->
-    <div id="roundResult">
-        <h2>Resultado da Rodada</h2>
-        <p id="roundOutcome">Resultado: Aguardando...</p>
-        <p id="roundCredits">Créditos após a rodada: Aguardando...</p>
-    </div>
-
 </body>
 </html>

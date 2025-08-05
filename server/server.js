@@ -250,7 +250,9 @@ function sendMissionsToAllPlayersInMatch(match) {
   match.players.forEach(player => {
     player.ws.send(JSON.stringify({
       type: 'missions',
-      data: match.missions
+      data: match.missions,
+      currentRound: match.currentRound,
+      maxRounds: gameConfig.maxRounds
     }));
   });
 }
@@ -355,7 +357,9 @@ wss.on('connection', (ws) => {
               playerName: choice.player,
               success: result.success ? 'Venceu' : 'Perdeu',
               credits: result.credits,
-              missions: match.missions
+              missions: match.missions,
+              currentRound: match.currentRound,
+              maxRounds: gameConfig.maxRounds
             });
           }
         });
@@ -378,7 +382,9 @@ wss.on('connection', (ws) => {
                 playerName: player.name,
                 success: groupResult.success ? 'Venceu' : 'Perdeu',
                 credits: player.credits,
-                missions: match.missions
+                missions: match.missions,
+                currentRound: match.currentRound,
+                maxRounds: gameConfig.maxRounds
               });
             });
           });

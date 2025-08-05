@@ -154,30 +154,6 @@ function shuffleArray(array) {
   }
 }
 
-// Função para dividir jogadores em grupos equilibrados de 2 ou 3
-function divideIntoGroups(players) {
-  const groups = [];
-  
-  // Embaralha a lista de jogadores antes de formar os grupos
-  shuffleArray(players);
-
-  while (players.length > 0) {
-    if (players.length % 3 === 0) {
-      groups.push(players.splice(0, 3)); // Adiciona grupo de 3
-    } else {
-      groups.push(players.splice(0, 2)); // Adiciona grupo de 2
-    }
-  }
-
-  // Log dos grupos formados com o número da rodada
-  console.log('Grupos formados para a missão coletiva:');
-  groups.forEach((group, index) => {
-    console.log(`Grupo ${index + 1}: ${group.map(player => player.name).join(', ')}`);
-  });
-
-  return groups;
-}
-
 // Função para resolver missões individuais
 function resolveIndividualMission(player, mission, match) {
   const roll = rollDice();
@@ -203,41 +179,43 @@ function resolveIndividualMission(player, mission, match) {
 }
 
 // Função para resolver missões coletivas
-function resolveCollectiveMission(groups, mission, match) {
-  const groupResults = [];
+function resolveCollectiveMission(players, mission, match) {
+  if (players.length === 0) return [];
   
-  groups.forEach(group => {
-    const totalSkill = group.reduce((total, player) => total + player.skillLevel, 0);
-    const roll = rollDice();
-    const success = (totalSkill + roll >= mission.difficulty);
+  // Todos os jogadores trabalham juntos como um único grupo
+  const totalSkill = players.reduce((total, player) => total + player.skillLevel, 0);
+  const roll = rollDice();
+  const success = (totalSkill + roll >= mission.difficulty);
 
-    if (success) {
-      group.forEach(player => player.credits += mission.reward);
-    } else {
-      group.forEach(player => player.credits -= mission.failureCost);
-    }
+  console.log(`Missão coletiva: ${players.length} jogadores trabalhando juntos`);
+  console.log(`Jogadores: ${players.map(p => p.name).join(', ')}`);
+  console.log(`Habilidade total: ${totalSkill}, Dado: ${roll}, Dificuldade: ${mission.difficulty}`);
+  console.log(`Resultado: ${success ? 'Sucesso' : 'Fracasso'}`);
 
-    // Adicionar ao histórico do relatório para cada jogador do grupo
-    group.forEach(player => {
-      match.gameReport.players[player.name].missionHistory.push({
-        round: match.currentRound,
-        missionType: 'collective',
-        missionName: mission.name,
-        result: success ? 'success' : 'failure',
-        roll: roll,
-        groupMembers: group.map(p => p.name),
-        creditsChange: success ? mission.reward : -mission.failureCost
-      });
-    });
+  // Aplicar resultado a todos os jogadores
+  if (success) {
+    players.forEach(player => player.credits += mission.reward);
+  } else {
+    players.forEach(player => player.credits -= mission.failureCost);
+  }
 
-    groupResults.push({
-      group,
-      success,
-      credits: group.map(player => player.credits)
+  // Adicionar ao histórico do relatório para cada jogador
+  players.forEach(player => {
+    match.gameReport.players[player.name].missionHistory.push({
+      round: match.currentRound,
+      missionType: 'collective',
+      missionName: mission.name,
+      result: success ? 'success' : 'failure',
+      roll: roll,
+      creditsChange: success ? mission.reward : -mission.failureCost
     });
   });
 
-  return groupResults;
+  return [{
+    group: players,
+    success,
+    credits: players.map(player => player.credits)
+  }];
 }
 
 // Enviar uma mensagem para um único jogador
@@ -371,9 +349,8 @@ wss.on('connection', (ws) => {
         });
 
         if (playersForCollective.length > 0) {
-          // Divide os jogadores em grupos equilibrados e aleatórios
-          const groups = divideIntoGroups(playersForCollective);
-          const groupResults = resolveCollectiveMission(groups, collectiveMission, match);
+          // Todos os jogadores trabalham juntos na mesma missão coletiva
+          const groupResults = resolveCollectiveMission(playersForCollective, collectiveMission, match);
 
           groupResults.forEach(groupResult => {
             groupResult.group.forEach(player => {

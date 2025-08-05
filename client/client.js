@@ -1,6 +1,48 @@
 // client.js
 let ws;
 let hasChosenFirstMission = false; // Track if player has made their first mission choice
+let playerData = null; // Store player registration data
+
+// Handle registration form
+document.addEventListener('DOMContentLoaded', function() {
+    const registrationForm = document.getElementById('registrationForm');
+    const registrationOverlay = document.getElementById('registrationOverlay');
+    
+    registrationForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const name = document.getElementById('playerNameInput').value.trim();
+        const age = parseInt(document.getElementById('playerAge').value);
+        const gender = document.getElementById('playerGender').value;
+        
+        if (!name || !age || !gender) {
+            alert('Por favor, preencha todos os campos obrigatórios.');
+            return;
+        }
+        
+        if (name.length < 2) {
+            alert('O nome deve ter pelo menos 2 caracteres.');
+            return;
+        }
+        
+        if (age < 13 || age > 99) {
+            alert('A idade deve estar entre 13 e 99 anos.');
+            return;
+        }
+        
+        // Store player data
+        playerData = {
+            name: name,
+            age: age,
+            gender: gender,
+            registrationTime: new Date().toISOString()
+        };
+        
+        // Hide registration form and connect to game
+        registrationOverlay.classList.add('hidden');
+        conectar();
+    });
+});
 
 function conectar() {
     ws = new WebSocket('ws://localhost:3000'); // Conectar ao servidor WebSocket
@@ -9,6 +51,14 @@ function conectar() {
     ws.onopen = () => {
         console.log('Conectado ao servidor WebSocket');
         updateGameStatus('Conectado ao servidor', 'status-match-found');
+        
+        // Send registration data to server
+        if (playerData) {
+            ws.send(JSON.stringify({
+                type: 'playerRegistration',
+                data: playerData
+            }));
+        }
     };
 
     // Evento quando uma mensagem for recebida do servidor
@@ -292,5 +342,4 @@ function chooseMission(missionType) {
     ws.send(JSON.stringify({ type: 'chooseMission', missionType: missionType }));
 }
 
-// Iniciar a conexão WebSocket assim que o script carregar
-conectar();
+// Note: Connection is now initiated after registration form is completed

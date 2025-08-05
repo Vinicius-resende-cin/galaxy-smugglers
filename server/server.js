@@ -33,12 +33,15 @@ let availableMatches = new Map(); // Partidas disponíveis para entrada (matchId
 let playerToMatch = new Map(); // Mapeamento jogador -> matchId
 
 // Função para criar jogadores com base nas variáveis fixas
-function createPlayer(name) {
+function createPlayer(playerData) {
   // Atribui habilidade fixa de 3 ou 5 de maneira aleatória
   const skillLevel = gameConfig.fixedSkillLevels[Math.floor(Math.random() * gameConfig.fixedSkillLevels.length)];
   
   const player = {
-    name,
+    name: playerData.name,
+    age: playerData.age,
+    gender: playerData.gender,
+    registrationTime: playerData.registrationTime,
     credits: gameConfig.initialCredits, // Créditos iniciais
     skillLevel, // Habilidade fixa configurável
     hasChosen: false // Marca se o jogador já fez uma escolha
@@ -86,6 +89,10 @@ function addPlayerToMatch(player, match) {
   
   // Inicializar dados do jogador no relatório da partida
   match.gameReport.players[player.name] = {
+    name: player.name,
+    age: player.age,
+    gender: player.gender,
+    registrationTime: player.registrationTime,
     skillLevel: player.skillLevel,
     missionHistory: [],
     creditsHistory: [gameConfig.initialCredits]
@@ -417,36 +424,55 @@ function tryAutoJoinMatch(player) {
 // Quando um cliente se conecta ao WebSocket
 wss.on('connection', (ws) => {
   console.log(`Novo jogador conectado`);
+  let player = null; // Player will be created after registration
 
-  // Criar jogador
-  const playerCount = waitingPlayers.length + Array.from(activeMatches.values()).reduce((total, match) => total + match.players.length, 0) + Array.from(availableMatches.values()).reduce((total, match) => total + match.players.length, 0) + 1;
-  const player = createPlayer(`Jogador ${playerCount}`);
-  player.ws = ws; // Associa o WebSocket ao jogador
-
-  // Envia as informações iniciais ao jogador
-  ws.send(JSON.stringify({ type: 'init', data: player }));
-
-  // Tentar adicionar automaticamente a uma partida disponível
-  const joinedMatch = tryAutoJoinMatch(player);
-  
-  if (!joinedMatch) {
-    // Se não conseguiu entrar em nenhuma partida, adicionar à fila de espera
-    waitingPlayers.push(player);
-    console.log(`${player.name} adicionado à fila de espera. Jogadores na fila: ${waitingPlayers.length}`);
-    
-    // Notificar o jogador que está na fila de espera
-    ws.send(JSON.stringify({
-      type: 'waitingForMatch',
-      message: 'Aguardando partida disponível...',
-      queuePosition: waitingPlayers.length
-    }));
-  }
-
-  // Quando o jogador escolhe participar de uma missão
+  // Quando o jogador envia dados de registro ou escolhe missão
   ws.on('message', (message) => {
     const data = JSON.parse(message);
 
+    if (data.type === 'playerRegistration') {
+      // Create player with registration data
+      const playerCount = waitingPlayers.length + Array.from(activeMatches.values()).reduce((total, match) => total + match.players.length, 0) + Array.from(availableMatches.values()).reduce((total, match) => total + match.players.length, 0) + 1;
+      
+      player = createPlayer({
+        name: data.data.name,
+        age: data.data.age,
+        gender: data.data.gender,
+        registrationTime: data.data.registrationTime
+      });
+      
+      player.ws = ws; // Associa o WebSocket ao jogador
+      
+      console.log(`Jogador registrado: ${player.name}, Idade: ${player.age}, Gênero: ${player.gender}`);
+
+      // Envia as informações iniciais ao jogador
+      ws.send(JSON.stringify({ type: 'init', data: player }));
+
+      // Tentar adicionar automaticamente a uma partida disponível
+      const joinedMatch = tryAutoJoinMatch(player);
+      
+      if (!joinedMatch) {
+        // Se não conseguiu entrar em nenhuma partida, adicionar à fila de espera
+        waitingPlayers.push(player);
+        console.log(`${player.name} adicionado à fila de espera. Jogadores na fila: ${waitingPlayers.length}`);
+        
+        // Notificar o jogador que está na fila de espera
+        ws.send(JSON.stringify({
+          type: 'waitingForMatch',
+          message: 'Aguardando partida disponível...',
+          queuePosition: waitingPlayers.length
+        }));
+      }
+      
+      return;
+    }
+
     if (data.type === 'chooseMission') {
+      if (!player) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Jogador não registrado.' }));
+        return;
+      }
+
       const { missionType } = data;
 
       // Encontrar a partida do jogador
@@ -604,6 +630,11 @@ wss.on('connection', (ws) => {
 
   // Quando o jogador se desconectar
   ws.on('close', () => {
+    if (!player) {
+      console.log('Jogador desconectado antes do registro');
+      return;
+    }
+    
     console.log(`Jogador ${player.name} desconectado`);
     
     // Remover da fila de espera se estiver lá

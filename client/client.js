@@ -60,6 +60,20 @@ function conectar() {
         if (data.type === 'error') {
             document.getElementById('roundOutcome').innerText = `Erro: ${data.message}`;
         }
+
+        // Quando a partida é encerrada
+        if (data.type === 'matchEnded') {
+            document.getElementById('roundOutcome').innerText = `Partida encerrada: ${data.reason}`;
+            if (data.finalCredits) {
+                document.getElementById('roundCredits').innerText = `Créditos finais: ${data.finalCredits}`;
+            }
+        }
+
+        // Quando o jogador é removido da partida
+        if (data.type === 'kicked') {
+            document.getElementById('roundOutcome').innerText = `Removido: ${data.reason}`;
+            document.getElementById('roundCredits').innerText = 'Desconectado do jogo';
+        }
     };
 
     // Evento quando a conexão for fechada

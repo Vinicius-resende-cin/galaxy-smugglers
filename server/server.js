@@ -14,7 +14,15 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 // Constantes do matchmaking
-const MATCH_SIZE = 3; // Número de jogadores por partida
+let MATCH_SIZE = 3; // Número de jogadores por partida (configurável)
+
+// Configurações do jogo (modificáveis pelo moderador)
+let gameConfig = {
+  matchSize: 3,
+  initialCredits: INITIAL_CREDITS,
+  fixedSkillLevels: [...FIXED_SKILL_LEVELS],
+  maxRounds: 10 // Limite máximo de rodadas por partida
+};
 
 // Estruturas globais para matchmaking
 let waitingPlayers = []; // Jogadores aguardando partida
@@ -24,12 +32,12 @@ let playerToMatch = new Map(); // Mapeamento jogador -> matchId
 // Função para criar jogadores com base nas variáveis fixas
 function createPlayer(name) {
   // Atribui habilidade fixa de 3 ou 5 de maneira aleatória
-  const skillLevel = FIXED_SKILL_LEVELS[Math.floor(Math.random() * FIXED_SKILL_LEVELS.length)];
+  const skillLevel = gameConfig.fixedSkillLevels[Math.floor(Math.random() * gameConfig.fixedSkillLevels.length)];
   
   const player = {
     name,
-    credits: INITIAL_CREDITS, // Créditos iniciais
-    skillLevel, // Habilidade fixa em 3 ou 5
+    credits: gameConfig.initialCredits, // Créditos iniciais
+    skillLevel, // Habilidade fixa configurável
     hasChosen: false // Marca se o jogador já fez uma escolha
   };
 
@@ -65,7 +73,7 @@ function addPlayerToMatch(player, match) {
   match.gameReport.players[player.name] = {
     skillLevel: player.skillLevel,
     missionHistory: [],
-    creditsHistory: [INITIAL_CREDITS]
+    creditsHistory: [gameConfig.initialCredits]
   };
 }
 
@@ -388,6 +396,28 @@ wss.on('connection', (ws) => {
         match.gameReport.totalRounds = match.currentRound;
         generateReport(match);
 
+        // Verificar se a partida atingiu o limite máximo de rodadas
+        if (match.currentRound >= gameConfig.maxRounds) {
+          console.log(`Partida ${matchId} atingiu o limite máximo de rodadas (${gameConfig.maxRounds}). Encerrando...`);
+          
+          // Notificar jogadores que a partida terminou
+          match.players.forEach(player => {
+            player.ws.send(JSON.stringify({
+              type: 'matchEnded',
+              reason: `Partida finalizada após ${gameConfig.maxRounds} rodadas`,
+              finalCredits: player.credits
+            }));
+          });
+          
+          // Remover partida
+          activeMatches.delete(matchId);
+          match.players.forEach(player => {
+            playerToMatch.delete(player.name);
+          });
+          
+          return; // Não continuar para a próxima rodada
+        }
+
         // Limpar as escolhas para a próxima rodada
         match.playersChoices = [];
         match.players.forEach(p => p.hasChosen = false); // Resetar a flag de escolhas
@@ -447,8 +477,144 @@ wss.on('connection', (ws) => {
 // Servir os arquivos da pasta 'client'
 app.use(express.static('client'));
 
+// Middleware para parsing JSON
+app.use(express.json());
+
+// API para o painel do moderador
+
+// Obter estatísticas do jogo
+app.get('/api/moderator/stats', (req, res) => {
+  const stats = {
+    totalWaitingPlayers: waitingPlayers.length,
+    activeMatches: activeMatches.size,
+    totalPlayersInMatches: Array.from(activeMatches.values()).reduce((total, match) => total + match.players.length, 0),
+    gameConfig: gameConfig,
+    matches: Array.from(activeMatches.values()).map(match => ({
+      matchId: match.matchId,
+      currentRound: match.currentRound,
+      playersCount: match.players.length,
+      players: match.players.map(p => ({
+        name: p.name,
+        credits: p.credits,
+        skillLevel: p.skillLevel,
+        hasChosen: p.hasChosen
+      })),
+      missions: match.missions
+    }))
+  };
+  
+  res.json(stats);
+});
+
+// Atualizar configurações do jogo
+app.post('/api/moderator/config', (req, res) => {
+  const { matchSize, initialCredits, fixedSkillLevels, maxRounds } = req.body;
+  
+  if (matchSize && matchSize > 0 && matchSize <= 10) {
+    gameConfig.matchSize = matchSize;
+    MATCH_SIZE = matchSize;
+  }
+  
+  if (initialCredits && initialCredits > 0) {
+    gameConfig.initialCredits = initialCredits;
+  }
+  
+  if (fixedSkillLevels && Array.isArray(fixedSkillLevels) && fixedSkillLevels.length > 0) {
+    gameConfig.fixedSkillLevels = fixedSkillLevels;
+  }
+  
+  if (maxRounds && maxRounds > 0) {
+    gameConfig.maxRounds = maxRounds;
+  }
+  
+  console.log('Configurações atualizadas pelo moderador:', gameConfig);
+  res.json({ success: true, config: gameConfig });
+});
+
+// Encerrar uma partida específica
+app.post('/api/moderator/match/:matchId/end', (req, res) => {
+  const { matchId } = req.params;
+  const match = activeMatches.get(matchId);
+  
+  if (!match) {
+    return res.status(404).json({ error: 'Partida não encontrada' });
+  }
+  
+  // Notificar jogadores que a partida foi encerrada
+  match.players.forEach(player => {
+    player.ws.send(JSON.stringify({
+      type: 'matchEnded',
+      reason: 'Partida encerrada pelo moderador'
+    }));
+  });
+  
+  // Gerar relatório final
+  match.gameReport.totalRounds = match.currentRound;
+  generateReport(match);
+  
+  // Remover partida
+  activeMatches.delete(matchId);
+  match.players.forEach(player => {
+    playerToMatch.delete(player.name);
+  });
+  
+  console.log(`Partida ${matchId} encerrada pelo moderador`);
+  res.json({ success: true, message: 'Partida encerrada com sucesso' });
+});
+
+// Kickar um jogador de uma partida
+app.post('/api/moderator/player/:playerName/kick', (req, res) => {
+  const { playerName } = req.params;
+  const matchId = playerToMatch.get(playerName);
+  
+  if (!matchId) {
+    return res.status(404).json({ error: 'Jogador não encontrado em nenhuma partida' });
+  }
+  
+  const match = activeMatches.get(matchId);
+  if (!match) {
+    return res.status(404).json({ error: 'Partida não encontrada' });
+  }
+  
+  const playerIndex = match.players.findIndex(p => p.name === playerName);
+  if (playerIndex === -1) {
+    return res.status(404).json({ error: 'Jogador não encontrado na partida' });
+  }
+  
+  const player = match.players[playerIndex];
+  
+  // Notificar o jogador que foi removido
+  player.ws.send(JSON.stringify({
+    type: 'kicked',
+    reason: 'Você foi removido da partida pelo moderador'
+  }));
+  
+  // Remover jogador
+  match.players.splice(playerIndex, 1);
+  playerToMatch.delete(playerName);
+  
+  // Notificar outros jogadores da partida
+  match.players.forEach(p => {
+    p.ws.send(JSON.stringify({
+      type: 'playerDisconnected',
+      playerName: playerName,
+      remainingPlayers: match.players.length
+    }));
+  });
+  
+  // Se a partida ficar vazia, removê-la
+  if (match.players.length === 0) {
+    activeMatches.delete(matchId);
+    console.log(`Partida ${matchId} removida (sem jogadores após kick)`);
+  }
+  
+  console.log(`Jogador ${playerName} removido da partida ${matchId} pelo moderador`);
+  res.json({ success: true, message: 'Jogador removido com sucesso' });
+});
+
 // Inicializar o servidor na porta 3000
 server.listen(3000, () => {
   console.log('Servidor WebSocket rodando na porta 3000');
   console.log(`Sistema de matchmaking ativo - ${MATCH_SIZE} jogadores por partida`);
+  console.log('Painel do moderador disponível em: http://localhost:3000/moderator.html');
 });

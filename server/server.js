@@ -1,5 +1,6 @@
 // server.js
 const express = require('express');
+const { MongoClient } = require('mongodb');
 const http = require('http');
 const WebSocket = require('ws');
 const fs = require('fs');
@@ -244,26 +245,40 @@ function generateReport(match) {
     lastUpdated: new Date().toISOString()
   };
 
+  // Save to local file (legacy)
   const reportsDir = path.join(__dirname, '..', 'reports');
   const filename = `${match.matchId}.json`;
   const filepath = path.join(reportsDir, filename);
-
-  // Garante que o diretório reports existe
   if (!fs.existsSync(reportsDir)) {
     fs.mkdirSync(reportsDir, { recursive: true });
   }
-
   try {
-    // Se o arquivo já existe, mantém a data de criação original
     if (fs.existsSync(filepath)) {
       const existingData = JSON.parse(fs.readFileSync(filepath, 'utf8'));
       reportData.generatedAt = existingData.generatedAt || reportData.generatedAt;
     }
-    
     fs.writeFileSync(filepath, JSON.stringify(reportData, null, 2));
     console.log(`Relatório atualizado: ${filepath}`);
   } catch (error) {
     console.error('Erro ao gerar relatório:', error);
+  }
+
+  // Send to MongoDB if URI is set
+  const mongoUri = process.env.MONGODB_URI;
+  if (mongoUri) {
+    (async () => {
+      try {
+        const client = new MongoClient(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true });
+        await client.connect();
+        const db = client.db(); // Use default DB from URI
+        const collection = db.collection('game_reports');
+        await collection.insertOne(reportData);
+        console.log('Relatório enviado ao MongoDB com sucesso.');
+        await client.close();
+      } catch (err) {
+        console.error('Erro ao enviar relatório ao MongoDB:', err);
+      }
+    })();
   }
 }
 

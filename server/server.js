@@ -272,8 +272,12 @@ function generateReport(match) {
         await client.connect();
         const db = client.db(); // Use default DB from URI
         const collection = db.collection('game_reports');
-        await collection.insertOne(reportData);
-        console.log('Relatório enviado ao MongoDB com sucesso.');
+        await collection.updateOne(
+          { matchId: reportData.matchId },
+          { $set: reportData },
+          { upsert: true }
+        );
+        console.log('Relatório atualizado/enviado ao MongoDB com sucesso.');
         await client.close();
       } catch (err) {
         console.error('Erro ao enviar relatório ao MongoDB:', err);

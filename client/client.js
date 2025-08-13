@@ -45,7 +45,11 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function conectar() {
-    ws = new WebSocket('ws://localhost:3000'); // Conectar ao servidor WebSocket
+    // Get WebSocket host and port from environment or fallback to current location
+    const wsHost = process.env.GALAXY_WS_HOST || "";
+    const wsPort = process.env.GALAXY_WS_PORT || "";
+    const wsUrl = `${wsHost}:${wsPort}`;
+    ws = new WebSocket(wsUrl); // Conectar ao servidor WebSocket
 
     // Evento quando o WebSocket for aberto
     ws.onopen = () => {

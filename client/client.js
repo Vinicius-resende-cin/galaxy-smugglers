@@ -46,9 +46,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function conectar() {
     // Get WebSocket host and port from environment or fallback to current location
-    const wsHost = process.env.GALAXY_WS_HOST || "";
-    const wsPort = process.env.GALAXY_WS_PORT || "";
-    const wsUrl = `${wsHost}${wsPort ? ':' + wsPort : ''}`;
+    // Use window variables or fallback to current location
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const wsHost = window.GALAXY_WS_HOST || window.location.hostname;
+    const wsPort = window.GALAXY_WS_PORT || window.location.port || (window.location.protocol === 'https:' ? 443 : 80);
+    const wsUrl = `${wsProtocol}://${wsHost}${wsPort ? ':' + wsPort : ''}`;
     ws = new WebSocket(wsUrl); // Conectar ao servidor WebSocket
 
     // Evento quando o WebSocket for aberto

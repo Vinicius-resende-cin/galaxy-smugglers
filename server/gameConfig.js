@@ -19,14 +19,14 @@ const DEFAULT_MAX_ROUNDS = 10; // Rodadas máximas (para modo fixedRounds)
 // Possibilidades de missões individuais e coletivas com suas recompensas, prejuízos e dificuldade
 const missionsData = {
   individual: [
-    { name: "Contrabando de Especiarias", reward: 100, failureCost: 30, difficulty: 5 },
-    { name: "Transporte de Armas", reward: 150, failureCost: 50, difficulty: 7 },
-    { name: "Roubo de Dados", reward: 120, failureCost: 40, difficulty: 6 }
+    { name: "Contrabando de Especiarias", reward: 100, failureCost: 30, difficulty: 7 },
+    { name: "Transporte de Armas", reward: 150, failureCost: 50, difficulty: 9 },
+    { name: "Roubo de Dados", reward: 120, failureCost: 40, difficulty: 8 }
   ],
   collective: [
-    { name: "Resgate de Reféns", reward: 200, failureCost: 60, difficulty: 8 },
-    { name: "Sabotagem Corporativa", reward: 180, failureCost: 55, difficulty: 7 },
-    { name: "Destruição de Base Militar", reward: 220, failureCost: 70, difficulty: 9 }
+    { name: "Resgate de Reféns", reward: 200, failureCost: 60, difficulty: 11 },
+    { name: "Sabotagem Corporativa", reward: 180, failureCost: 55, difficulty: 10 },
+    { name: "Destruição de Base Militar", reward: 220, failureCost: 70, difficulty: 13 }
   ]
 };
 
